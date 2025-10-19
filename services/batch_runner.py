@@ -21,6 +21,7 @@ from models import RubricModel
 
 from utils import ai_client, io_utils, pdf_tools, validation
 
+from .pdf_renderer import PDFRenderError, PDFSettings, PDFSummaryRenderer
 from .summary_renderer import SummaryRenderError, SummaryRenderer, SummarySettings
 
 try:  # Optional dependency loaded lazily to keep startup cheap.
@@ -42,6 +43,16 @@ def _int_env(name: str, default: int) -> int:
         return default
     try:
         return int(value)
+    except ValueError:
+        return default
+
+
+def _float_env(name: str, default: float) -> float:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        return float(value)
     except ValueError:
         return default
 
@@ -124,6 +135,11 @@ def _load_summary_settings() -> SummarySettings:
         markdown_template=os.getenv("SUMMARY_MARKDOWN_TEMPLATE", "student_summary.md.j2"),
         course_name=os.getenv("COURSE_NAME", ""),
         teacher_name=os.getenv("TEACHER_NAME", ""),
+        pdf_enabled=_bool_env("PDF_SUMMARY_ENABLED", False),
+        pdf_batch_merge=_bool_env("PDF_BATCH_MERGE", False),
+        pdf_page_size=os.getenv("PDF_PAGE_SIZE", "letter"),
+        pdf_font=os.getenv("PDF_FONT", "Helvetica"),
+        pdf_line_spacing=_float_env("PDF_LINE_SPACING", 1.2),
     )
 
     yaml_paths: List[Path] = []
@@ -176,6 +192,22 @@ def _load_summary_settings() -> SummarySettings:
         teacher_name = section.get("teacher_name")
         if isinstance(teacher_name, str):
             settings.teacher_name = teacher_name
+        settings.pdf_enabled = _coalesce_bool(section.get("pdf_enabled"), settings.pdf_enabled)
+        settings.pdf_batch_merge = _coalesce_bool(
+            section.get("pdf_batch_merge"), settings.pdf_batch_merge
+        )
+        pdf_page_size = section.get("pdf_page_size")
+        if isinstance(pdf_page_size, str):
+            settings.pdf_page_size = pdf_page_size
+        pdf_font = section.get("pdf_font")
+        if isinstance(pdf_font, str):
+            settings.pdf_font = pdf_font
+        pdf_line_spacing = section.get("pdf_line_spacing")
+        if isinstance(pdf_line_spacing, (int, float, str)):
+            try:
+                settings.pdf_line_spacing = float(pdf_line_spacing)
+            except (TypeError, ValueError):
+                pass
         break
 
     settings.template_dir = settings.template_dir.resolve()
@@ -238,6 +270,8 @@ class JobState:
     finished_at: Optional[str] = None
     error: Optional[str] = None
     artifacts: Dict[str, str] = field(default_factory=dict)
+    pdf_count: int = 0
+    pdf_batch_path: Optional[str] = None
     lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def snapshot(self) -> Dict[str, Any]:
@@ -262,6 +296,8 @@ class JobState:
                 "artifacts": self.artifacts.copy(),
                 "started_at": self.started_at,
                 "finished_at": self.finished_at,
+                "pdf_count": self.pdf_count,
+                "pdf_batch_path": self.pdf_batch_path,
             }
             if self.error:
                 data["error"] = self.error
@@ -332,6 +368,7 @@ def _run_job(
     outputs_text_dir = outputs_dir / "text"
     outputs_print_dir = outputs_dir / "print"
     outputs_markdown_dir = outputs_dir / "print_md"
+    outputs_pdf_dir = outputs_dir / "print_pdf"
     logs_dir = state.job_dir / "logs"
 
     summary_settings = _load_summary_settings()
@@ -344,6 +381,8 @@ def _run_job(
         outputs_print_dir.mkdir(parents=True, exist_ok=True)
     if summary_settings.markdown_enabled:
         outputs_markdown_dir.mkdir(parents=True, exist_ok=True)
+    if summary_settings.pdf_enabled:
+        outputs_pdf_dir.mkdir(parents=True, exist_ok=True)
     logs_dir.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -370,6 +409,20 @@ def _run_job(
     summary_renderer = SummaryRenderer(rubric_model, summary_settings)
     printed_students: List[str] = []
     job_display_name = state.job_name or state.job_id
+    pdf_renderer: Optional[PDFSummaryRenderer] = None
+    pdf_contexts: List[tuple[str, Dict[str, Any]]] = []
+    pdf_generated_count = 0
+    batch_pdf_path: Optional[Path] = None
+    if summary_settings.pdf_enabled or summary_settings.pdf_batch_merge:
+        pdf_renderer = PDFSummaryRenderer(
+            PDFSettings(
+                page_size=summary_settings.pdf_page_size,
+                font=summary_settings.pdf_font,
+                line_spacing=summary_settings.pdf_line_spacing,
+                course_name=summary_settings.course_name,
+                teacher_name=summary_settings.teacher_name,
+            )
+        )
     job_log_path = logs_dir / "job.log"
     results_log_path = logs_dir / "results.jsonl"
 
@@ -403,6 +456,11 @@ def _run_job(
             summary_modes: Optional[str] = None
             summary_bytes = 0
             printed_flag = False
+            summary_context: Dict[str, Any] = {}
+            pdf_generated = False
+            pdf_bytes = 0
+            pdf_path: Optional[Path] = None
+            pdf_error: Optional[str] = None
 
             try:
                 extraction = pdf_tools.extract_text_with_metadata(str(essay_path))
@@ -449,7 +507,12 @@ def _run_job(
                     if result.status in {"ok", "retry_ok"} and result.payload is not None:
                         payload = result.payload
                         try:
-                            summary_modes, summary_bytes, printed_flag = _generate_printable_summaries(
+                            (
+                                summary_modes,
+                                summary_bytes,
+                                printed_flag,
+                                summary_context,
+                            ) = _generate_printable_summaries(
                                 summary_renderer,
                                 payload,
                                 student_name=student_name,
@@ -460,6 +523,30 @@ def _run_job(
                             )
                             if printed_flag:
                                 printed_students.append(student_name)
+                            context_for_pdf = summary_context.copy() if summary_context else {}
+                            if pdf_renderer:
+                                if summary_settings.pdf_enabled:
+                                    try:
+                                        outputs_pdf_dir.mkdir(parents=True, exist_ok=True)
+                                        target_pdf = outputs_pdf_dir / f"{student_name}.pdf"
+                                        pdf_bytes = pdf_renderer.generate_student_pdf(
+                                            context_for_pdf, target_pdf
+                                        )
+                                        if pdf_bytes > 0:
+                                            pdf_generated = True
+                                            pdf_path = target_pdf
+                                            pdf_generated_count += 1
+                                            with state.lock:
+                                                state.pdf_count = pdf_generated_count
+                                    except (PDFRenderError, OSError) as exc:
+                                        pdf_error = str(exc)
+                                        pdf_generated = False
+                                        pdf_bytes = 0
+                                        pdf_path = None
+                                if summary_settings.pdf_batch_merge:
+                                    pdf_contexts.append((student_name, context_for_pdf))
+                            elif summary_settings.pdf_batch_merge:
+                                pdf_contexts.append((student_name, summary_context))
                         except (SummaryRenderError, OSError) as exc:
                             status = "failed"
                             error = f"Printable summary failed: {exc}"
@@ -551,6 +638,7 @@ def _run_job(
                     str(duration_ms),
                     str(retries),
                     f"printed={'true' if printed_flag else 'false'}",
+                    f"printed_pdf={'true' if pdf_generated else 'false'}",
                 ]
             _append_job_log(
                 job_log,
@@ -581,6 +669,10 @@ def _run_job(
                 text_validation_message=text_validation_message,
                 print_summary=summary_modes,
                 summary_bytes=summary_bytes,
+                pdf_generated=pdf_generated,
+                pdf_bytes=pdf_bytes,
+                pdf_path=str(pdf_path) if pdf_path else None,
+                pdf_error=pdf_error,
             )
 
             _update_counters(
@@ -591,6 +683,21 @@ def _run_job(
                 text_validation_status,
             )
             _write_state_snapshot(state)
+
+    if summary_settings.pdf_batch_merge and pdf_renderer and pdf_contexts:
+        sorted_contexts = [
+            context for _, context in sorted(pdf_contexts, key=lambda item: item[0].casefold())
+        ]
+        if sorted_contexts:
+            candidate = outputs_dir / "batch_all_summaries.pdf"
+            try:
+                batch_bytes = pdf_renderer.generate_batch_pdf(sorted_contexts, candidate)
+            except PDFRenderError as exc:
+                batch_pdf_path = None
+                batch_bytes = 0
+            else:
+                if batch_bytes > 0:
+                    batch_pdf_path = candidate
 
     try:
         summary_path = outputs_dir / "summary.csv"
@@ -606,11 +713,16 @@ def _run_job(
             outputs_json_dir,
             text_dir=outputs_print_dir if summary_settings.enabled else None,
             markdown_dir=outputs_markdown_dir if summary_settings.markdown_enabled else None,
+            pdf_dir=outputs_pdf_dir if summary_settings.pdf_enabled else None,
             readme_content=zip_readme,
         )
         with state.lock:
             state.artifacts["csv"] = str(summary_path)
             state.artifacts["zip"] = str(zip_path)
+            state.pdf_count = pdf_generated_count
+            if batch_pdf_path and batch_pdf_path.exists():
+                state.pdf_batch_path = str(batch_pdf_path)
+                state.artifacts["pdf_batch"] = str(batch_pdf_path)
     except Exception as exc:  # pragma: no cover - disk issues
         _finalise_state(state, "failed", error=str(exc))
         return
@@ -659,6 +771,10 @@ def _append_results_log(
     text_validation_message: Optional[str],
     print_summary: Optional[str] = None,
     summary_bytes: int = 0,
+    pdf_generated: bool = False,
+    pdf_bytes: int = 0,
+    pdf_path: Optional[str] = None,
+    pdf_error: Optional[str] = None,
 ) -> None:
     entry = {
         "timestamp": datetime.utcnow().isoformat(),
@@ -688,6 +804,13 @@ def _append_results_log(
         entry["print_summary"] = print_summary
     if summary_bytes:
         entry["summary_bytes"] = summary_bytes
+    entry["pdf_generated"] = bool(pdf_generated)
+    if pdf_bytes:
+        entry["pdf_bytes"] = pdf_bytes
+    if pdf_path:
+        entry["pdf_path"] = pdf_path
+    if pdf_error:
+        entry["pdf_error"] = pdf_error
 
     handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
     handle.flush()
@@ -771,6 +894,7 @@ def _write_zip_archive(
     *,
     text_dir: Optional[Path] = None,
     markdown_dir: Optional[Path] = None,
+    pdf_dir: Optional[Path] = None,
     readme_content: Optional[str] = None,
 ) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -785,6 +909,9 @@ def _write_zip_archive(
         if markdown_dir and markdown_dir.exists():
             for md_file in sorted(markdown_dir.glob("*.md")):
                 archive.write(md_file, arcname=f"print_md/{md_file.name}")
+        if pdf_dir and pdf_dir.exists():
+            for pdf_file in sorted(pdf_dir.glob("*.pdf")):
+                archive.write(pdf_file, arcname=f"print_pdf/{pdf_file.name}")
 
 
 def _copy_essays(files: Iterable[Path], dest_dir: Path) -> List[tuple[str, Path]]:
@@ -893,7 +1020,7 @@ def _generate_printable_summaries(
     outputs_print_dir: Path,
     outputs_markdown_dir: Path,
     text_validation_status: str,
-) -> tuple[Optional[str], int, bool]:
+) -> tuple[Optional[str], int, bool, Dict[str, Any]]:
     """Render and persist printable summaries for a student."""
 
     flags: Dict[str, Any] = {}
@@ -932,4 +1059,4 @@ def _generate_printable_summaries(
         summary_modes = "txt,md" if summary_modes == "txt" else "md"
         printed = True
 
-    return summary_modes, summary_bytes, printed
+    return summary_modes, summary_bytes, printed, result.context

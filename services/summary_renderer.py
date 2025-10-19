@@ -55,6 +55,11 @@ class SummarySettings:
     markdown_template: str = "student_summary.md.j2"
     course_name: str = ""
     teacher_name: str = ""
+    pdf_enabled: bool = False
+    pdf_batch_merge: bool = False
+    pdf_page_size: str = "letter"
+    pdf_font: str = "Helvetica"
+    pdf_line_spacing: float = 1.2
 
 
 @dataclass(slots=True)
@@ -63,6 +68,7 @@ class SummaryRenderResult:
 
     text: Optional[str]
     markdown: Optional[str]
+    context: Dict[str, Any]
 
     @property
     def produced_any(self) -> bool:
@@ -79,6 +85,10 @@ class SummaryRenderer:
     def __init__(self, rubric: RubricModel, settings: SummarySettings) -> None:
         self.settings = settings
         self._rubric = rubric.model_dump(mode="json")
+        self._criterion_names = {
+            criterion.id: getattr(criterion, "name", criterion.id)
+            for criterion in rubric.criteria
+        }
         loader = FileSystemLoader(str(settings.template_dir))
         self._env = Environment(
             loader=loader,
@@ -122,7 +132,7 @@ class SummaryRenderer:
         if self.settings.markdown_enabled:
             markdown_content = self._render_template(self.settings.markdown_template, context)
 
-        return SummaryRenderResult(text=text_content, markdown=markdown_content)
+        return SummaryRenderResult(text=text_content, markdown=markdown_content, context=context)
 
     def render_batch_header(
         self,
@@ -224,6 +234,9 @@ class SummaryRenderer:
             row = {
                 "id": str(entry.get("id", "")),
                 "score": entry.get("score", ""),
+                "name": _sanitize_text(
+                    self._criterion_names.get(str(entry.get("id", "")), "")
+                ),
                 "evidence": evidence,
                 "explanation": explanation,
                 "advice": advice,

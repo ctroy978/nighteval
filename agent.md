@@ -6,7 +6,7 @@
 A lightweight web application that assists teachers in **evaluating student essays** using a provided **rubric**.
 The system processes a **folder of PDF essays**, sends each essay through an **AI model**, and produces:
 
-1. **Per-student evaluations** (JSON + printable text)
+1. **Per-student evaluations** (JSON + printable TXT/Markdown/PDF)
 2. **A CSV summary** of scores across all students
 3. **A ZIP archive** of all individual evaluations
 
@@ -91,6 +91,10 @@ Later phases add OCR fallback, rubric extraction, printable reports, and automat
            ├── outputs/
            │    ├── json/
            │    ├── text/
+           │    ├── print/
+           │    ├── print_md/
+           │    ├── print_pdf/
+           │    ├── batch_all_summaries.pdf
            │    ├── summary.csv
            │    └── evaluations.zip
            └── logs/
@@ -107,7 +111,8 @@ Later phases add OCR fallback, rubric extraction, printable reports, and automat
 | **1.2** | Integrate **PydanticAI** for structured output enforcement | ✅ Completed |
 | **2**   | OCR fallback for scanned PDFs                              | 🕒 Pending (text-gate complete) |
 | **3**   | Rubric PDF → JSON extraction + correction UI               | 🚧 In progress |
-| **4**   | Printable summaries (txt/pdf) per student                  | 🔜                  |
+| **4**   | Printable summaries (txt/markdown) per student             | ✅ Completed |
+| **4.1** | PDF rendering + batch PDF export                           | ✅ Completed |
 | **5**   | Email results (optional SMTP config)                       | 🔜                  |
 
 Phase 0 is complete and verified in the walking skeleton. Phases 1 and 1.2 are stable and in production. Phase 2A (text validation gate) is delivered, with OCR fallback reserved for a future sprint. Phase 3 focuses on rubric extraction, validation, and the Fix JSON flow described below.
@@ -130,6 +135,17 @@ Phase 0 is complete and verified in the walking skeleton. Phases 1 and 1.2 are s
 - Fix JSON UI (`/rubrics/{temp_id}/fix`) provides one-screen editing with inline validation against the canonical schema.
 - Saved rubrics receive a `rubric_version_hash`, recorded in `state.json` and exposed through `GET /jobs/{id}`.
 - Extraction sessions persist `rubric_extract.log`, `rubric_source.pdf`, and `rubric_provisional.json` for troubleshooting.
+
+---
+
+## 🧾 Phase 4 & 4.1 Status
+
+- TXT summaries render by default using `templates/student_summary.txt.j2`, with Markdown and ZIP README variants controllable through ENV or `config/summary.yaml`.
+- PDF summaries use ReportLab via `PDFSummaryRenderer`, drawing from the same sanitized evaluation context and respecting `COURSE_NAME` / `TEACHER_NAME` metadata.
+- Each essay records `print_summary`, `summary_bytes`, `pdf_generated`, `pdf_bytes`, and `pdf_path` in `logs/results.jsonl`, while `job.log` annotates `printed=` and `printed_pdf=` flags.
+- `state.json` now exposes `pdf_count` and `pdf_batch_path`, letting clients decide which download buttons to surface.
+- `evaluations.zip` includes printable artifacts under `print/`, `print_md/`, and `print_pdf/`, plus an optional README when `INCLUDE_ZIP_README=true`.
+- API adds `/jobs/{job_id}/students/{student}/summary.{txt|md|pdf}` and `/jobs/{job_id}/batch.pdf` for direct downloads.
 
 ---
 

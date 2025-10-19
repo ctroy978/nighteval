@@ -160,6 +160,30 @@ async def student_summary_md(job_id: str, student_name: str):  # type: ignore[ov
     return FileResponse(path, media_type="text/markdown", filename=path.name)
 
 
+@app.get("/jobs/{job_id}/students/{student_name}/summary.pdf")
+async def student_summary_pdf(job_id: str, student_name: str):  # type: ignore[override]
+    path = _resolve_student_summary_path(job_id, student_name, "pdf")
+    return FileResponse(path, media_type="application/pdf", filename=path.name)
+
+
+@app.get("/jobs/{job_id}/batch.pdf")
+async def batch_summary_pdf(job_id: str):  # type: ignore[override]
+    snapshot = _load_snapshot_from_disk(job_id)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+
+    artifacts = snapshot.get("artifacts", {}) or {}
+    path_str = artifacts.get("pdf_batch") or snapshot.get("pdf_batch_path")
+    if not path_str:
+        raise HTTPException(status_code=404, detail="Batch PDF not available")
+
+    path = Path(path_str)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Batch PDF missing on disk")
+
+    return FileResponse(path, media_type="application/pdf", filename=path.name)
+
+
 @app.post("/rubrics/extract", response_model=RubricExtractResponseModel)
 async def rubric_extract(
     rubric_file: UploadFile = File(...),
@@ -286,11 +310,15 @@ def _load_snapshot_from_disk(job_id: str) -> Optional[Dict[str, Any]]:
     data.setdefault("processed", 0)
     data.setdefault("total", 0)
     data.setdefault("job_name", None)
+    data.setdefault("pdf_count", 0)
+    data.setdefault("pdf_batch_path", None)
     artifacts = data["artifacts"]
     if "csv" not in artifacts:
         artifacts["csv"] = None
     if "zip" not in artifacts:
         artifacts["zip"] = None
+    if "pdf_batch" not in artifacts:
+        artifacts["pdf_batch"] = None
     return data
 
 
@@ -310,9 +338,12 @@ def _format_status_response(snapshot: Dict[str, Any]) -> Dict[str, Any]:
         "low_text_warning_count": snapshot.get("low_text_warning_count", 0),
         "low_text_rejected_count": snapshot.get("low_text_rejected_count", 0),
         "rubric_version_hash": snapshot.get("rubric_version_hash"),
+        "pdf_count": snapshot.get("pdf_count", 0),
+        "pdf_batch_path": snapshot.get("pdf_batch_path"),
         "artifacts": {
             "csv": artifacts.get("csv"),
             "zip": artifacts.get("zip"),
+            "pdf_batch": artifacts.get("pdf_batch"),
         },
         "started_at": snapshot.get("started_at"),
         "finished_at": snapshot.get("finished_at"),
@@ -341,10 +372,15 @@ def _serialize_rubric_extract(result: RubricExtractResponse) -> Dict[str, Any]:
 def _resolve_student_summary_path(job_id: str, student_name: str, extension: str) -> Path:
     safe_name = _validate_student_name(student_name)
     base = _resolve_output_base()
+    outputs_dir = base / job_id / "outputs"
     if extension == "txt":
-        directory = base / job_id / "outputs" / "print"
+        directory = outputs_dir / "print"
+    elif extension == "md":
+        directory = outputs_dir / "print_md"
+    elif extension == "pdf":
+        directory = outputs_dir / "print_pdf"
     else:
-        directory = base / job_id / "outputs" / "print_md"
+        raise HTTPException(status_code=400, detail="Unsupported summary format requested")
     path = directory / f"{safe_name}.{extension}"
     if not path.exists():
         raise HTTPException(status_code=404, detail="Summary not available for this student")

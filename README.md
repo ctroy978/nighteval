@@ -1,6 +1,6 @@
-# Batch Essay Evaluator — Phase 1.2
+# Batch Essay Evaluator — Phase 4.1
 
-Phase 1.2 keeps the batch workflow from Phase 1 but hardens reliability with structured output. Essays are still processed sequentially, yet every model response is now validated against Pydantic models, auto-retried on schema errors, and trimmed server-side before being written to disk.
+Phase 4.1 builds on the hardened batch workflow (Phase 1.2) by layering in teacher-friendly printable summaries: TXT by default, optional Markdown, and ReportLab-powered PDFs with an optional merged packet. Essays are still processed sequentially, yet every model response is validated, retried on schema errors, trimmed server-side, and now rendered into printer-ready artifacts alongside the canonical JSON.
 
 ---
 
@@ -30,7 +30,18 @@ pip install -r requirements.txt
 | `STRUCTURED_OUTPUT`     | Enable Pydantic-validated JSON output (default `true`) |
 | `VALIDATION_RETRY`      | Number of schema retries per essay (default `1`) |
 | `TRIM_TEXT_FIELDS`      | Trim quotes/explanations/advice server-side (default `true`) |
-| `ZIP_INCLUDE_PRINTABLE` | Reserved for printable summaries (Phase 4)   |
+| `PRINT_SUMMARY_ENABLED` | Write Phase 4 plain-text summaries to `outputs/print/` (default `true`) |
+| `MARKDOWN_SUMMARY`      | Also render Markdown summaries to `outputs/print_md/` (default `false`) |
+| `SUMMARY_LINE_WIDTH`    | Soft wrap width for TXT summaries (default `100`) |
+| `INCLUDE_ZIP_README`    | Add a README banner to `evaluations.zip` (default `false`) |
+| `ZIP_README_TEMPLATE`   | Template filename for the ZIP README (default `batch_header.txt.j2`) |
+| `COURSE_NAME`           | Optional course label injected into summaries and PDFs |
+| `TEACHER_NAME`          | Optional teacher name injected into summaries and PDFs |
+| `PDF_SUMMARY_ENABLED`   | Generate per-student PDF summaries in `outputs/print_pdf/` (default `false`) |
+| `PDF_BATCH_MERGE`       | Generate `batch_all_summaries.pdf` with all students combined (default `false`) |
+| `PDF_PAGE_SIZE`         | PDF page size (`letter`, `a4`, …) for ReportLab (default `letter`) |
+| `PDF_FONT`              | Base font for PDF summaries (default `Helvetica`) |
+| `PDF_LINE_SPACING`      | Line spacing multiplier for PDF summaries (default `1.2`) |
 | `TEXT_VALIDATION_ENABLED` | Enable the Phase 2 text sufficiency gate (default `true`) |
 | `MIN_TEXT_CHARS`        | Minimum total characters required before calling the AI (default `500`) |
 | `MIN_CHARS_PER_PAGE`    | Minimum average characters per page (default `200`) |
@@ -55,6 +66,25 @@ text_validation:
 Environment variables take precedence over YAML values when both are present.
 
 Prompts live under `./prompts/` and are rendered with Jinja2. Edit these Markdown templates to tweak the evaluator without touching Python code.
+
+Printable summary settings accept the same overrides via a `config/summary.yaml` file:
+
+```yaml
+summary:
+  enabled: true
+  markdown_enabled: false
+  pdf_enabled: true
+  pdf_batch_merge: true
+  line_width: 96
+  template_dir: templates
+  text_template: student_summary.txt.j2
+  markdown_template: student_summary.md.j2
+  readme_template: batch_header.txt.j2
+  course_name: "WR 121 - College Composition"
+  teacher_name: "Dr. Lee"
+```
+
+As with the text gate, ENV values win if both YAML and environment variables are set.
 
 ---
 
@@ -215,8 +245,12 @@ ${OUTPUT_BASE}/{timestamp}-{job_name}/
  │    ├── json/                 # validated per-student JSON results
  │    ├── json_failed/          # schema-corrective failures for diagnostics
  │    ├── text/                 # extracted essay text used for validation
-  │    ├── summary.csv           # aggregate scores
-  │    └── evaluations.zip       # archive of JSON results
+ │    ├── print/                # Phase 4 plain-text summaries (one per student when enabled)
+ │    ├── print_md/             # Phase 4 Markdown summaries (optional)
+ │    ├── print_pdf/            # Phase 4.1 PDF summaries (optional)
+ │    ├── batch_all_summaries.pdf   # Phase 4.1 merged PDF (when PDF_BATCH_MERGE=true)
+ │    ├── summary.csv           # aggregate scores
+ │    └── evaluations.zip       # archive of JSON + printable artifacts
 └── logs/
       ├── job.log               # timestamp | student | status | ms | retries
       ├── results.jsonl         # per-essay metadata (timings, validation status, text metrics, schema errors)
@@ -226,7 +260,18 @@ ${OUTPUT_BASE}/{timestamp}-{job_name}/
 
 `summary.csv` lists every student alphabetically with total points earned, total points possible (sum of rubric `max_score` values), and one column per criterion (`criterion_<ID>_score`). Missing or invalid evaluations leave the score cells blank.
 
-`evaluations.zip` contains one `{Student Name}.json` per validated essay. Schema failures are left in `outputs/json_failed/` with the raw response and error list for manual follow-up.
+`evaluations.zip` always contains one `{Student Name}.json` per validated essay. When printable modes are enabled it also bundles the contents of `print/`, `print_md/`, and `print_pdf/`, plus an optional `README.txt` rendered from `templates/batch_header.txt.j2`.
+
+If `PDF_BATCH_MERGE=true`, the combined PDF lives at `outputs/batch_all_summaries.pdf` and is exposed via the API as well as on-disk.
+
+### Printable Summary Endpoints
+
+| Endpoint | Description |
+| -------- | ----------- |
+| `GET /jobs/{job_id}/students/{student}/summary.txt` | Streams the plain-text summary (404 if printable summaries are disabled or the student failed validation). |
+| `GET /jobs/{job_id}/students/{student}/summary.md` | Streams the Markdown summary when `MARKDOWN_SUMMARY=true`. |
+| `GET /jobs/{job_id}/students/{student}/summary.pdf` | Streams the PDF summary when `PDF_SUMMARY_ENABLED=true`. |
+| `GET /jobs/{job_id}/batch.pdf` | Streams the merged PDF when `PDF_BATCH_MERGE=true`. |
 
 ---
 
@@ -255,3 +300,13 @@ Templates support the placeholders `{{ rubric_json }}`, `{{ essay_text }}`, `{{ 
 - Streams progress, counters, and artifact locations via `GET /jobs/{job_id}`.
 - Persists observability artifacts: `job.log`, `results.jsonl`, and `state.json` with validation counters.
 - Loads prompt templates dynamically from `/prompts/`.
+
+## Definition of Done (Phase 4.1)
+
+- Renders per-student plain-text summaries (`outputs/print/*.txt`) whenever `PRINT_SUMMARY_ENABLED=true`.
+- Optionally renders Markdown versions (`outputs/print_md/*.md`) behind `MARKDOWN_SUMMARY`.
+- Optionally renders per-student PDF summaries (`outputs/print_pdf/*.pdf`) using ReportLab and the validated evaluation context when `PDF_SUMMARY_ENABLED=true`.
+- Supports a merged `batch_all_summaries.pdf` artifact and `GET /jobs/{job_id}/batch.pdf` endpoint when `PDF_BATCH_MERGE=true`.
+- Bundles printable artifacts (TXT/MD/PDF) into `evaluations.zip` alongside the JSON payloads, plus an optional ZIP README rendered from `templates/batch_header.txt.j2` when `INCLUDE_ZIP_README=true`.
+- Logs printable metadata per essay in `results.jsonl` (`print_summary`, `summary_bytes`, `pdf_generated`, `pdf_bytes`, `pdf_path`) and marks `printed_pdf=true` in `job.log` for quick auditing.
+- Tracks printable artifacts in `state.json`, exposing `pdf_count` and `pdf_batch_path` for API consumers.
