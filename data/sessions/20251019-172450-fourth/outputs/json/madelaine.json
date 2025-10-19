@@ -1,0 +1,53 @@
+{
+  "overall": {
+    "points_earned": 13,
+    "points_possible": 20
+  },
+  "criteria": [
+    {
+      "id": "thesis_argument",
+      "score": 3,
+      "evidence": {
+        "quote": "Despite this, one possible determination of CWD may be that it evolved from a preexisting disease. One such possibility that researchers know of is called transmissible spongiform encephalopathy (Emerging). ... Due to the disease’s relatedness in transmission, effects, and symptoms, it is the most likely origin of chronic wasting disease through the evolution of the virus."
+      },
+      "explanation": "Thesis clearly states CWD evolved from TSE, focusing on similarities, adequately addressing the topic.",
+      "advice": "Strengthen originality by exploring alternative origins or implications for wildlife management."
+    },
+    {
+      "id": "organization_coherence",
+      "score": 3,
+      "evidence": {
+        "quote": "TSE is a disease transmitted in the same or similar ways when compared to CWD. These diseases can be transmitted in three ways: through bodily fluids, contaminated environmental factors (such as water or food), and infected carcasses (U.S. Geological Survey)."
+      },
+      "explanation": "Logical progression from transmission to effects and symptoms, with clear paragraph structure and transitions.",
+      "advice": "Improve transitions between sections for smoother flow and avoid abrupt shifts."
+    },
+    {
+      "id": "development_support",
+      "score": 3,
+      "evidence": {
+        "quote": "Both diseases have been diagnosed as misfolded proteins in the brain (Merck). These proteins are known as prions, which are often produced by mammals for common cellular functions and then recycled or degraded."
+      },
+      "explanation": "Uses credible sources like Merck and USGS to support claims with relevant examples on prions and transmission.",
+      "advice": "Integrate more direct quotes or data from sources to bolster evidence depth."
+    },
+    {
+      "id": "critical_analysis",
+      "score": 2,
+      "evidence": {
+        "quote": "Having the same cause between differing diseases can create similarities between how symptoms of a disease act (Emerging). Symptoms that are commonly held between TSE and chronic wasting disease include behavioral changes, excessive drooling, weight loss, hair pulling, and incoordination (Merck & Chronic)."
+      },
+      "explanation": "Identifies similarities in symptoms and cause but lacks deeper insight into evolutionary mechanisms.",
+      "advice": "Add critical evaluation of evidence limitations or counterarguments for more depth."
+    },
+    {
+      "id": "language_style_mechanics",
+      "score": 2,
+      "evidence": {
+        "quote": "This abnormal folding of proteins causes the cells to cease being broken down and to instead collect in the brain (Merck). This leads to neurological damage and eventual death by eliminating brain cells (Emerging)."
+      },
+      "explanation": "Readable with some awkward phrasing and formatting issues like extra spaces, affecting clarity mildly.",
+      "advice": "Proofread for spacing errors and refine sentence variety to enhance engagement."
+    }
+  ]
+}

@@ -31,8 +31,68 @@ pip install -r requirements.txt
 | `VALIDATION_RETRY`      | Number of schema retries per essay (default `1`) |
 | `TRIM_TEXT_FIELDS`      | Trim quotes/explanations/advice server-side (default `true`) |
 | `ZIP_INCLUDE_PRINTABLE` | Reserved for printable summaries (Phase 4)   |
+| `TEXT_VALIDATION_ENABLED` | Enable the Phase 2 text sufficiency gate (default `true`) |
+| `MIN_TEXT_CHARS`        | Minimum total characters required before calling the AI (default `500`) |
+| `MIN_CHARS_PER_PAGE`    | Minimum average characters per page (default `200`) |
+| `ALLOW_PARTIAL_TEXT`    | Allow low-text PDFs through with a warning instead of rejection (default `false`) |
+
+The text validation settings can also be provided via a lightweight YAML file. Place a `config/text_validation.yaml` file alongside the app with:
+
+```yaml
+text_validation:
+  enabled: true
+  min_text_chars: 500
+  min_chars_per_page: 200
+  allow_partial_text: false
+```
+
+Environment variables take precedence over YAML values when both are present.
 
 Prompts live under `./prompts/` and are rendered with Jinja2. Edit these Markdown templates to tweak the evaluator without touching Python code.
+
+---
+
+## File Rules
+
+- Export essays directly to PDF from Google Docs or Word. Avoid scans or photos.
+- Verify you can select/copy text inside each PDF; scanned images will be rejected.
+- Keep filenames stable—each PDF becomes `<Student Name>.pdf` in the job outputs.
+
+---
+
+## Rubric JSON Format
+
+- `criteria`: list of objects with `id` (string, required, unique), `max_score` (positive integer), optional `name`, and optional `descriptors` (mapping rubric levels to guidance).
+- `overall_points_possible` (optional) must equal the sum of all `max_score` values when present.
+- Extra keys at the top level or in `criteria` objects are rejected.
+
+Example payload:
+
+```json
+{
+  "criteria": [
+    {
+      "id": "content",
+      "name": "Content",
+      "max_score": 4,
+      "descriptors": {
+        "4": "Thesis is clear and well supported.",
+        "3": "Thesis is present but supporting evidence is thin.",
+        "2": "Thesis is unclear or poorly supported.",
+        "1": "Response lacks a defensible thesis."
+      }
+    },
+    {
+      "id": "mechanics",
+      "name": "Mechanics",
+      "max_score": 3
+    }
+  ],
+  "overall_points_possible": 7
+}
+```
+
+Keep rubric files in JSON format; YAML is not currently supported.
 
 ---
 
@@ -119,11 +179,12 @@ ${OUTPUT_BASE}/{timestamp}-{job_name}/
  ├── outputs/
  │    ├── json/                 # validated per-student JSON results
  │    ├── json_failed/          # schema-corrective failures for diagnostics
+ │    ├── text/                 # extracted essay text used for validation
  │    ├── summary.csv           # aggregate scores
  │    └── evaluations.zip       # archive of JSON results
 └── logs/
       ├── job.log               # timestamp | student | status | ms | retries
-      ├── results.jsonl         # per-essay metadata (timings, validation status, schema errors)
+      ├── results.jsonl         # per-essay metadata (timings, validation status, text metrics, schema errors)
       └── state.json            # current job snapshot used by the API
 ```
 

@@ -90,6 +90,7 @@ Later phases add OCR fallback, rubric extraction, printable reports, and automat
            │    └── rubric.json
            ├── outputs/
            │    ├── json/
+           │    ├── text/
            │    ├── summary.csv
            │    └── evaluations.zip
            └── logs/
@@ -102,14 +103,23 @@ Later phases add OCR fallback, rubric extraction, printable reports, and automat
 | Phase   | Focus                                                      | Status              |
 | ------- | ---------------------------------------------------------- | ------------------- |
 | **0**   | Single essay → AI → validated JSON output                  | ✅ Baseline workflow |
-| **1**   | Batch processing, CSV + ZIP, progress endpoint             | ⏭️  Preparing        |
-| **1.2** | Integrate **PydanticAI** for structured output enforcement | 🔜                  |
-| **2**   | OCR fallback for scanned PDFs                              | 🔜                  |
+| **1**   | Batch processing, CSV + ZIP, progress endpoint             | ✅ Completed (Phase 1) |
+| **1.2** | Integrate **PydanticAI** for structured output enforcement | ✅ Completed |
+| **2**   | OCR fallback for scanned PDFs                              | 🚧 Text validation gate (no OCR) |
 | **3**   | Rubric PDF → JSON extraction + correction UI               | 🔜                  |
 | **4**   | Printable summaries (txt/pdf) per student                  | 🔜                  |
 | **5**   | Email results (optional SMTP config)                       | 🔜                  |
 
-Phase 0 is complete and verified in the walking skeleton. The next milestone is Phase 1, which introduces batch processing and aggregated outputs.
+Phase 0 is complete and verified in the walking skeleton. Phases 1 and 1.2 are stable and in production. Phase 2 is underway with the new text validation gate and logging enhancements; OCR fallback remains on deck for a later sprint.
+
+---
+
+## 📝 Phase 2 Status
+
+- Text validation gate rejects low-text PDFs before the AI call and records remediation advice alongside the job logs.
+- Per-essay text dumps now land in `outputs/text/` to make low-text diagnoses reproducible.
+- Job status exposes `text_ok_count`, `low_text_warning_count`, and `low_text_rejected_count` via the API and `state.json`.
+- Thresholds are configurable through ENV or `config/text_validation.yaml`, keeping deployments flexible without code edits.
 
 ---
 

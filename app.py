@@ -48,6 +48,9 @@ class JobStatusResponse(JobResponse):
     validated: int
     schema_fail: int
     retries_used: int
+    text_ok_count: int
+    low_text_warning_count: int
+    low_text_rejected_count: int
     artifacts: Dict[str, Optional[str]]
     started_at: Optional[str]
     finished_at: Optional[str]
@@ -126,6 +129,9 @@ def _load_snapshot_from_disk(job_id: str) -> Optional[Dict[str, Any]]:
     data.setdefault("validated", 0)
     data.setdefault("schema_fail", 0)
     data.setdefault("retries_used", 0)
+    data.setdefault("text_ok_count", 0)
+    data.setdefault("low_text_warning_count", 0)
+    data.setdefault("low_text_rejected_count", 0)
     data.setdefault("processed", 0)
     data.setdefault("total", 0)
     artifacts = data["artifacts"]
@@ -148,6 +154,9 @@ def _format_status_response(snapshot: Dict[str, Any]) -> Dict[str, Any]:
         "validated": snapshot.get("validated", 0),
         "schema_fail": snapshot.get("schema_fail", 0),
         "retries_used": snapshot.get("retries_used", 0),
+        "text_ok_count": snapshot.get("text_ok_count", 0),
+        "low_text_warning_count": snapshot.get("low_text_warning_count", 0),
+        "low_text_rejected_count": snapshot.get("low_text_rejected_count", 0),
         "artifacts": {
             "csv": artifacts.get("csv"),
             "zip": artifacts.get("zip"),

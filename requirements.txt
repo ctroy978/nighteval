@@ -4,3 +4,4 @@ openai
 PyPDF2
 python-dotenv
 Jinja2
+PyYAML

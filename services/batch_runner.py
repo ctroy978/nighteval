@@ -20,6 +20,11 @@ from models import RubricModel
 
 from utils import ai_client, io_utils, pdf_tools, validation
 
+try:  # Optional dependency loaded lazily to keep startup cheap.
+    import yaml
+except ImportError:  # pragma: no cover - fallback when PyYAML is absent.
+    yaml = None
+
 
 def _bool_env(name: str, default: bool) -> bool:
     value = os.getenv(name)
@@ -39,6 +44,103 @@ def _int_env(name: str, default: int) -> int:
 
 
 @dataclass
+class TextValidationConfig:
+    """Runtime settings for the PDF text gate."""
+
+    enabled: bool = True
+    min_text_chars: int = 500
+    min_chars_per_page: int = 200
+    allow_partial_text: bool = False
+
+    @property
+    def thresholds(self) -> Dict[str, int]:
+        return {
+            "min_text_chars": self.min_text_chars,
+            "min_chars_per_page": self.min_chars_per_page,
+        }
+
+
+def _load_text_validation_config() -> TextValidationConfig:
+    """Load text validation settings from ENV and optional YAML."""
+
+    config = TextValidationConfig(
+        enabled=_bool_env("TEXT_VALIDATION_ENABLED", True),
+        min_text_chars=_int_env("MIN_TEXT_CHARS", 500),
+        min_chars_per_page=_int_env("MIN_CHARS_PER_PAGE", 200),
+        allow_partial_text=_bool_env("ALLOW_PARTIAL_TEXT", False),
+    )
+
+    yaml_paths: List[Path] = []
+    explicit_path = os.getenv("TEXT_VALIDATION_CONFIG")
+    if explicit_path:
+        yaml_paths.append(Path(explicit_path).expanduser())
+    yaml_paths.append(Path("config/text_validation.yaml"))
+    yaml_paths.append(Path("config.yaml"))
+
+    for candidate in yaml_paths:
+        if not candidate or not candidate.exists():
+            continue
+        if yaml is None:
+            break
+        try:
+            with candidate.open("r", encoding="utf-8") as handle:
+                payload = yaml.safe_load(handle) or {}
+        except Exception:  # pragma: no cover - malformed YAML edge cases
+            continue
+
+        section = payload.get("text_validation") if isinstance(payload, dict) else None
+        if not isinstance(section, dict):
+            continue
+
+        config.enabled = _coalesce_bool(section.get("enabled"), config.enabled)
+        config.min_text_chars = _coalesce_int(
+            section.get("min_text_chars"), config.min_text_chars
+        )
+        config.min_chars_per_page = _coalesce_int(
+            section.get("min_chars_per_page"), config.min_chars_per_page
+        )
+        config.allow_partial_text = _coalesce_bool(
+            section.get("allow_partial_text"), config.allow_partial_text
+        )
+        break
+
+    return config
+
+
+FRIENDLY_FIX_MESSAGE_TEMPLATE = (
+    "\"{filename}\" appears to contain little or no selectable text. Please export "
+    "from Google Docs/Word using File → Download → PDF (not a scan or photo). You "
+    "should be able to select/copy text in the PDF."
+)
+
+
+def _friendly_fix_message(student_name: str) -> str:
+    filename = f"{student_name}.pdf"
+    return FRIENDLY_FIX_MESSAGE_TEMPLATE.format(filename=filename)
+
+
+def _coalesce_bool(value: Any, fallback: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return fallback
+
+
+def _coalesce_int(value: Any, fallback: int) -> int:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return fallback
+    return fallback
+
+
+@dataclass
 class JobState:
     """Mutable snapshot of a running or completed batch job."""
 
@@ -51,6 +153,9 @@ class JobState:
     validated: int = 0
     schema_fail: int = 0
     retries_used: int = 0
+    text_ok_count: int = 0
+    low_text_warning_count: int = 0
+    low_text_rejected_count: int = 0
     status: str = "running"
     started_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     finished_at: Optional[str] = None
@@ -72,6 +177,9 @@ class JobState:
                 "validated": self.validated,
                 "schema_fail": self.schema_fail,
                 "retries_used": self.retries_used,
+                "text_ok_count": self.text_ok_count,
+                "low_text_warning_count": self.low_text_warning_count,
+                "low_text_rejected_count": self.low_text_rejected_count,
                 "artifacts": self.artifacts.copy(),
                 "started_at": self.started_at,
                 "finished_at": self.finished_at,
@@ -142,11 +250,13 @@ def _run_job(
     outputs_dir = state.job_dir / "outputs"
     outputs_json_dir = outputs_dir / "json"
     outputs_failed_dir = outputs_dir / "json_failed"
+    outputs_text_dir = outputs_dir / "text"
     logs_dir = state.job_dir / "logs"
 
     essays_dir.mkdir(parents=True, exist_ok=True)
     outputs_json_dir.mkdir(parents=True, exist_ok=True)
     outputs_failed_dir.mkdir(parents=True, exist_ok=True)
+    outputs_text_dir.mkdir(parents=True, exist_ok=True)
     logs_dir.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -172,6 +282,7 @@ def _run_job(
     if not structured_output:
         validation_retry = 0
     trim_text_fields = _bool_env("TRIM_TEXT_FIELDS", True)
+    text_validation_config = _load_text_validation_config()
 
     with job_log_path.open("a", encoding="utf-8") as job_log, results_log_path.open(
         "a", encoding="utf-8"
@@ -187,49 +298,86 @@ def _run_job(
             validation_status = "not_run"
             schema_errors: List[str] = []
             retries_used = 0
+            text_length = 0
+            chars_per_page_avg = 0.0
+            page_count = 0
+            text_validation_status = "ok"
+            text_validation_message: Optional[str] = None
+            thresholds = text_validation_config.thresholds
 
             try:
-                essay_text = pdf_tools.extract_text(str(essay_path))
-                result = ai_client.evaluate_essay(
-                    essay_text=essay_text,
-                    rubric=rubric_model,
-                    validation_retry=validation_retry,
-                    trim_text_fields=trim_text_fields,
+                extraction = pdf_tools.extract_text_with_metadata(str(essay_path))
+                essay_text = extraction.text
+                page_count = extraction.page_count
+                text_length = len(essay_text)
+                chars_per_page_avg = (
+                    float(text_length) / float(max(page_count, 1)) if text_length else 0.0
                 )
-                attempts = result.attempts
-                raw_response = result.raw_text
-                usage = result.usage
-                validation_status = result.status
-                schema_errors = result.schema_errors
-                retries_used = max(attempts - 1, 0)
 
-                if result.status in {"ok", "retry_ok"} and result.payload is not None:
-                    payload = result.payload
-                    _write_student_json(outputs_json_dir, student_name, payload)
-                    summary_builder.add_success(student_name, payload)
-                elif result.status == "schema_fail":
-                    status = "schema_fail"
-                    error = "; ".join(schema_errors) if schema_errors else "Schema validation failed"
-                    summary_builder.add_failure(student_name)
-                    _write_failure_json(
-                        outputs_failed_dir,
-                        student_name,
-                        error,
-                        raw_response,
-                        schema_errors,
-                    )
+                io_utils.write_text(outputs_text_dir / f"{student_name}.txt", essay_text)
+
+                if text_validation_config.enabled:
+                    below_total = text_length < text_validation_config.min_text_chars
+                    below_per_page = chars_per_page_avg < text_validation_config.min_chars_per_page
+                    if below_total or below_per_page:
+                        if text_validation_config.allow_partial_text:
+                            text_validation_status = "low_text_warning"
+                        else:
+                            text_validation_status = "low_text_rejected"
+                            text_validation_message = _friendly_fix_message(student_name)
+                    else:
+                        text_validation_status = "ok"
                 else:
-                    status = "failed"
-                    error = "Evaluation failed"
-                    validation_status = "error"
-                    summary_builder.add_failure(student_name)
-                    _write_failure_json(
-                        outputs_failed_dir,
-                        student_name,
-                        error,
-                        raw_response,
-                        schema_errors,
+                    text_validation_status = "ok"
+
+                if text_validation_status == "low_text_rejected":
+                    status = "low_text_rejected"
+                    error = text_validation_message
+                else:
+                    result = ai_client.evaluate_essay(
+                        essay_text=essay_text,
+                        rubric=rubric_model,
+                        validation_retry=validation_retry,
+                        trim_text_fields=trim_text_fields,
                     )
+                    attempts = result.attempts
+                    raw_response = result.raw_text
+                    usage = result.usage
+                    validation_status = result.status
+                    schema_errors = result.schema_errors
+                    retries_used = max(attempts - 1, 0)
+
+                    if result.status in {"ok", "retry_ok"} and result.payload is not None:
+                        payload = result.payload
+                        _write_student_json(outputs_json_dir, student_name, payload)
+                        summary_builder.add_success(student_name, payload)
+                    elif result.status == "schema_fail":
+                        status = "schema_fail"
+                        error = (
+                            "; ".join(schema_errors)
+                            if schema_errors
+                            else "Schema validation failed"
+                        )
+                        summary_builder.add_failure(student_name)
+                        _write_failure_json(
+                            outputs_failed_dir,
+                            student_name,
+                            error,
+                            raw_response,
+                            schema_errors,
+                        )
+                    else:
+                        status = "failed"
+                        error = "Evaluation failed"
+                        validation_status = "error"
+                        summary_builder.add_failure(student_name)
+                        _write_failure_json(
+                            outputs_failed_dir,
+                            student_name,
+                            error,
+                            raw_response,
+                            schema_errors,
+                        )
             except (FileNotFoundError, pdf_tools.PDFExtractionError) as exc:
                 status = "failed"
                 error = str(exc)
@@ -263,7 +411,21 @@ def _run_job(
 
             duration_ms = int((time.perf_counter() - start_time) * 1000)
             retries = max(attempts - 1, 0)
-            _append_job_log(job_log, student_name, status, duration_ms, retries)
+            extra_fields = None
+            if status == "low_text_rejected":
+                extra_fields = [
+                    f"chars={text_length}",
+                    f"pages={page_count}",
+                    f"avg={chars_per_page_avg:.1f}",
+                ]
+            _append_job_log(
+                job_log,
+                student_name,
+                status,
+                duration_ms,
+                retries,
+                extra_fields=extra_fields,
+            )
             _append_results_log(
                 results_log,
                 student_name,
@@ -278,9 +440,20 @@ def _run_job(
                 schema_errors,
                 retries,
                 essay_source=str(source_folder / f"{student_name}.pdf"),
+                text_length=text_length,
+                chars_per_page_avg=chars_per_page_avg,
+                text_validation_status=text_validation_status,
+                text_validation_thresholds=thresholds,
+                text_validation_message=text_validation_message,
             )
 
-            _update_counters(state, status, validation_status, retries)
+            _update_counters(
+                state,
+                status,
+                validation_status,
+                retries,
+                text_validation_status,
+            )
             _write_state_snapshot(state)
 
     try:
@@ -298,9 +471,22 @@ def _run_job(
     _finalise_state(state, "completed")
 
 
-def _append_job_log(handle, student: str, status: str, ms: int, retries: int) -> None:
+def _append_job_log(
+    handle,
+    student: str,
+    status: str,
+    ms: int,
+    retries: int,
+    *,
+    extra_fields: Optional[List[str]] = None,
+) -> None:
     timestamp = datetime.utcnow().isoformat()
-    handle.write(f"{timestamp} | {student} | {status} | {ms} | {retries}\n")
+    parts: List[str] = [timestamp, student, status]
+    if extra_fields:
+        parts.extend(extra_fields)
+    else:
+        parts.extend([str(ms), str(retries)])
+    handle.write(" | ".join(parts) + "\n")
     handle.flush()
 
 
@@ -318,6 +504,12 @@ def _append_results_log(
     schema_errors: List[str],
     retries_used: int,
     essay_source: str,
+    *,
+    text_length: int,
+    chars_per_page_avg: float,
+    text_validation_status: str,
+    text_validation_thresholds: Dict[str, int],
+    text_validation_message: Optional[str],
 ) -> None:
     entry = {
         "timestamp": datetime.utcnow().isoformat(),
@@ -330,6 +522,10 @@ def _append_results_log(
         "validation_status": validation_status,
         "schema_errors": schema_errors,
         "retries_used": retries_used,
+        "text_length": text_length,
+        "chars_per_page_avg": chars_per_page_avg,
+        "text_validation_status": text_validation_status,
+        "text_validation_thresholds": text_validation_thresholds,
     }
     if usage:
         entry["usage"] = usage
@@ -337,6 +533,8 @@ def _append_results_log(
         entry["evaluation"] = payload
     if raw_response:
         entry["raw"] = raw_response
+    if text_validation_message:
+        entry["text_validation_message"] = text_validation_message
 
     handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
     handle.flush()
@@ -349,7 +547,11 @@ def _write_state_snapshot(state: JobState) -> None:
 
 
 def _update_counters(
-    state: JobState, status: str, validation_status: str, retries: int
+    state: JobState,
+    status: str,
+    validation_status: str,
+    retries: int,
+    text_status: str,
 ) -> None:
     with state.lock:
         state.processed += 1
@@ -362,6 +564,12 @@ def _update_counters(
             state.validated += 1
         elif validation_status == "schema_fail":
             state.schema_fail += 1
+        if text_status == "ok":
+            state.text_ok_count += 1
+        elif text_status == "low_text_warning":
+            state.low_text_warning_count += 1
+        elif text_status == "low_text_rejected":
+            state.low_text_rejected_count += 1
 
 
 def _finalise_state(state: JobState, status: str, error: Optional[str] = None) -> None:

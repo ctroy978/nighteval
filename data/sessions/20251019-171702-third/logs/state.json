@@ -1,0 +1,18 @@
+{
+  "job_id": "20251019-171702-third",
+  "status": "failed",
+  "total": 4,
+  "processed": 0,
+  "succeeded": 0,
+  "failed": 0,
+  "validated": 0,
+  "schema_fail": 0,
+  "retries_used": 0,
+  "text_ok_count": 0,
+  "low_text_warning_count": 0,
+  "low_text_rejected_count": 0,
+  "artifacts": {},
+  "started_at": "2025-10-19T17:17:02.767597",
+  "finished_at": "2025-10-19T17:17:02.768555",
+  "error": "Invalid rubric: 2 validation errors for RubricModel\ncriteria\n  Field required [type=missing, input_value={'rubric': {'course': 'WR...}], 'total_points': 20}}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.4/v/missing\nrubric\n  Extra inputs are not permitted [type=extra_forbidden, input_value={'course': 'WR 121 - Coll...]}], 'total_points': 20}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.4/v/extra_forbidden"
+}

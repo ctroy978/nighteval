@@ -1,5 +1,6 @@
 """Utilities for extracting text from PDF essays."""
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from PyPDF2 import PdfReader
@@ -9,8 +10,16 @@ class PDFExtractionError(Exception):
     """Raised when PDF text cannot be extracted."""
 
 
-def extract_text(pdf_path: str) -> str:
-    """Return concatenated text from the provided PDF file."""
+@dataclass
+class PDFTextExtraction:
+    """Container for extracted PDF text and basic metadata."""
+
+    text: str
+    page_count: int
+
+
+def extract_text_with_metadata(pdf_path: str) -> PDFTextExtraction:
+    """Return extracted text and page count for the provided PDF file."""
 
     path = Path(pdf_path)
     if not path.exists():
@@ -30,7 +39,10 @@ def extract_text(pdf_path: str) -> str:
         chunks.append(text.strip())
 
     content = "\n\n".join(chunk for chunk in chunks if chunk)
-    if not content:
-        raise PDFExtractionError(f"No text extracted from {pdf_path}")
+    return PDFTextExtraction(text=content, page_count=len(reader.pages))
 
-    return content
+
+def extract_text(pdf_path: str) -> str:
+    """Backward-compatible helper that returns text only."""
+
+    return extract_text_with_metadata(pdf_path).text
