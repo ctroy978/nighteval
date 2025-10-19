@@ -70,12 +70,12 @@ The application reads configuration from environment variables (loaded via `.env
 | Variable                 | Required | Description                                                        |
 | ------------------------ | -------- | ------------------------------------------------------------------ |
 | `APP_ENV`                | No       | Deployment mode (`development`, `production`); defaults to `dev`.  |
-| `APP_BASE_DIR`           | Yes      | Root directory for sessions (e.g., `/data/sessions`).              |
-| `XAI_API_BASE` / `OPENAI_API_BASE` | Yes      | Base URL of the OpenAI-compatible API endpoint.                    |
-| `XAI_API_KEY` / `OPENAI_API_KEY`   | Yes      | API key/token for the model provider.                              |
-| `XAI_MODEL` / `OPENAI_MODEL`       | Yes      | Model name (defaults to `grok-4-fast-reasoning`).                  |
+| `OUTPUT_BASE`            | Yes      | Root directory for sessions (e.g., `/data/sessions`).              |
+| `AI_PROVIDER_URL`        | Yes      | Base URL of the OpenAI-compatible API endpoint.                    |
+| `AI_API_KEY`             | Yes      | API key/token for the model provider.                              |
+| `AI_MODEL`               | Yes      | Model name (defaults to `gpt-4-turbo`).                            |
 | `AI_TIMEOUT_SECONDS`     | No       | HTTP timeout for AI calls (default `60`).                          |
-| `MAX_CONCURRENT_JOBS`    | No       | Limits in-flight jobs (default `1`).                               |
+| `MAX_CONCURRENT_JOBS`    | No       | Reserved for future parallelism (default `1`).                     |
 | `PDF_TEXT_EXTRACTOR`     | No       | `pypdf2`, `pdfminer`, or `mixed`; default auto-select.             |
 | `ENABLE_OCR_FALLBACK`    | No       | `true`/`false`; enables pytesseract pipeline.                      |
 | `LOG_LEVEL`              | No       | `INFO`, `DEBUG`, etc.; defaults to `INFO`.                         |
@@ -89,11 +89,11 @@ The application reads configuration from environment variables (loaded via `.env
 
 ```
 APP_ENV=production
-APP_BASE_DIR=/data/sessions
+OUTPUT_BASE=/data/sessions
 
-XAI_API_BASE=https://api.x.ai/v1
-XAI_API_KEY=sk-REPLACE_ME
-XAI_MODEL=grok-4-fast-reasoning
+AI_PROVIDER_URL=https://api.openai.com/v1
+AI_API_KEY=sk-REPLACE_ME
+AI_MODEL=gpt-4-turbo
 AI_TIMEOUT_SECONDS=60
 MAX_CONCURRENT_JOBS=1
 PDF_TEXT_EXTRACTOR=pdfminer

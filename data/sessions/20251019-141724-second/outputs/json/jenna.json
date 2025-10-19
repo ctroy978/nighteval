@@ -1,0 +1,53 @@
+{
+  "overall": {
+    "points_earned": 14,
+    "points_possible": 20
+  },
+  "criteria": [
+    {
+      "id": "A",
+      "score": 3,
+      "evidence": {
+        "quote": "Ultimately, as time went on, the Soviet leader allowed the Berlin wall to come down because he had a broader vision for the Soviet Union and its role in the world. The main reasons for this are that he wanted a more dynamic socialist system, there was a need for internal economic recovery, and he desired to reposition the soviet union as a cooperative global power."
+      },
+      "explanation": "Thesis clearly outlines three reasons for Gorbachev's actions, focusing the essay adequately.",
+      "advice": "Strengthen originality by adding unique insights beyond standard historical facts."
+    },
+    {
+      "id": "B",
+      "score": 3,
+      "evidence": {
+        "quote": "Gorbachev allowed for the Berlin wall to be taken down because he sought a greater purpose for the Soviet Union made possible by a socialist system with a more innovative approach."
+      },
+      "explanation": "Logical structure with paragraphs dedicated to each reason; transitions guide flow effectively overall.",
+      "advice": "Improve transitions between historical background and main arguments for smoother progression."
+    },
+    {
+      "id": "C",
+      "score": 3,
+      "evidence": {
+        "quote": "By 1985, the time that Gorbachev took office, the soviet economy had been stagnant for 20 years. The country’s gross national product dropped from 5.8% in 1940 to 2.6% in 1970 (“Consequences of”)."
+      },
+      "explanation": "Provides adequate examples and citations from sources to support economic and policy claims.",
+      "advice": "Integrate more varied evidence types, like primary quotes, to deepen support."
+    },
+    {
+      "id": "D",
+      "score": 3,
+      "evidence": {
+        "quote": "Gorbachev’s non-intervention, rooted in the Sinatra Doctrine, allowed East German protests to escalate. The Wall fell on November 9, 1989, after a bureaucratic error by a German Democratic Republic official, with Gorbachev refusing to deploy Soviet troops."
+      },
+      "explanation": "Offers solid interpretation linking policies to the Wall's fall with appropriate topic engagement.",
+      "advice": "Add deeper critical insights on policy contradictions to elevate analysis."
+    },
+    {
+      "id": "E",
+      "score": 2,
+      "evidence": {
+        "quote": "The Russians began maneuvering to drive the United States, Britain and France out of the city for good (“Berlin Wall”). Their efforts were unsuccessful and only led to rising tensions between East and West Berlin,"
+      },
+      "explanation": "Readable but noticeable spacing errors, inconsistent capitalization, and awkward phrasing affect clarity.",
+      "advice": "Proofread for formatting issues and ensure consistent capitalization of proper nouns."
+    }
+  ]
+}

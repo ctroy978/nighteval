@@ -1,71 +1,145 @@
-"""FastAPI entrypoint for Phase 0 single-essay evaluation."""
+"""FastAPI entrypoint for Phase 1 batch processing."""
 
 from __future__ import annotations
 
+import json
 import os
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+
+from services.batch_runner import JobManager
 
 load_dotenv()
 
-from utils import ai_client, io_utils, pdf_tools  # noqa: E402 (after load_dotenv)
+
+def _resolve_output_base() -> Path:
+    candidate = os.getenv("OUTPUT_BASE") or os.getenv("APP_BASE_DIR")
+    if candidate:
+        return Path(candidate).expanduser()
+    return Path("/data/sessions")
 
 
-class EvaluateRequest(BaseModel):
-    essay_path: str = Field(..., description="Filesystem path to the student essay PDF")
-    rubric_path: str = Field(..., description="Filesystem path to the rubric JSON")
+job_manager = JobManager(output_base=_resolve_output_base())
+
+app = FastAPI(title="Batch Essay Evaluator", version="1.1.0")
 
 
-app = FastAPI(title="Batch Essay Evaluator", version="0.1.0")
+class JobRequest(BaseModel):
+    essays_folder: str = Field(..., description="Absolute path to folder containing PDF essays")
+    rubric_path: str = Field(..., description="Absolute path to rubric JSON file")
+    job_name: Optional[str] = Field(None, description="Optional label included in the job id")
 
 
-@app.post("/evaluate")
-async def evaluate(request: EvaluateRequest) -> Dict[str, Any]:
-    base_dir = Path(os.getenv("APP_BASE_DIR", "/data/sessions"))
+class JobResponse(BaseModel):
+    job_id: str
+    status: str
+    total: int
+    processed: int
+
+
+class JobStatusResponse(JobResponse):
+    succeeded: int
+    failed: int
+    artifacts: Dict[str, Optional[str]]
+    started_at: Optional[str]
+    finished_at: Optional[str]
+    error: Optional[str] = None
+
+
+@app.post("/jobs", response_model=JobResponse)
+async def create_job(request: JobRequest) -> Dict[str, Any]:
     try:
-        session_dir = _create_session_dir(base_dir)
-    except PermissionError as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                f"Cannot create session directory under '{base_dir}'. "
-                "Set APP_BASE_DIR to a writable location."
-            ),
-        ) from exc
-
-    try:
-        essay_text = pdf_tools.extract_text(request.essay_path)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except pdf_tools.PDFExtractionError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    try:
-        rubric_json = io_utils.read_json_file(request.rubric_path)
+        state = job_manager.start_job(
+            essays_folder=Path(request.essays_folder),
+            rubric_path=Path(request.rubric_path),
+            job_name=request.job_name,
+        )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=f"Invalid rubric JSON: {exc}") from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    io_utils.write_text(session_dir / "essay.txt", essay_text)
-    io_utils.write_json(session_dir / "rubric.json", rubric_json)
-
-    try:
-        evaluation = ai_client.evaluate_essay(essay_text=essay_text, rubric=rubric_json)
-    except ai_client.AIClientError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-    io_utils.write_json(session_dir / "evaluation.json", evaluation)
-    return evaluation
+    snapshot = state.snapshot()
+    return {
+        "job_id": snapshot["job_id"],
+        "status": snapshot["status"],
+        "total": snapshot["total"],
+        "processed": snapshot["processed"],
+    }
 
 
-def _create_session_dir(base_dir: Path) -> Path:
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    session_dir = base_dir / timestamp
-    session_dir.mkdir(parents=True, exist_ok=True)
-    return session_dir
+@app.get("/jobs/{job_id}", response_model=JobStatusResponse)
+async def job_status(job_id: str) -> Dict[str, Any]:
+    state = job_manager.get_job(job_id)
+    if state:
+        snapshot = state.snapshot()
+    else:
+        snapshot = _load_snapshot_from_disk(job_id)
+        if snapshot is None:
+            raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+
+    return _format_status_response(snapshot)
+
+
+@app.get("/jobs/{job_id}/download/{artifact}")
+async def job_artifact(job_id: str, artifact: str):  # type: ignore[override]
+    snapshot = _load_snapshot_from_disk(job_id)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+
+    artifacts = snapshot.get("artifacts", {}) or {}
+    if artifact not in {"csv", "zip"}:
+        raise HTTPException(status_code=404, detail="Unknown artifact requested")
+
+    path_str = artifacts.get(artifact)
+    if not path_str:
+        raise HTTPException(status_code=404, detail=f"Artifact '{artifact}' not ready for job '{job_id}'")
+
+    path = Path(path_str)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Artifact file missing on disk")
+
+    return FileResponse(path)
+
+
+def _load_snapshot_from_disk(job_id: str) -> Optional[Dict[str, Any]]:
+    base = _resolve_output_base()
+    state_path = base / job_id / "logs" / "state.json"
+    if not state_path.exists():
+        return None
+
+    with state_path.open("r", encoding="utf-8") as handle:
+        data = json.load(handle)
+
+    # Ensure required keys exist for consistent responses.
+    data.setdefault("artifacts", {})
+    artifacts = data["artifacts"]
+    if "csv" not in artifacts:
+        artifacts["csv"] = None
+    if "zip" not in artifacts:
+        artifacts["zip"] = None
+    return data
+
+
+def _format_status_response(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    artifacts = snapshot.get("artifacts", {}) or {}
+    return {
+        "job_id": snapshot.get("job_id"),
+        "status": snapshot.get("status"),
+        "total": snapshot.get("total", 0),
+        "processed": snapshot.get("processed", 0),
+        "succeeded": snapshot.get("succeeded", 0),
+        "failed": snapshot.get("failed", 0),
+        "artifacts": {
+            "csv": artifacts.get("csv"),
+            "zip": artifacts.get("zip"),
+        },
+        "started_at": snapshot.get("started_at"),
+        "finished_at": snapshot.get("finished_at"),
+        "error": snapshot.get("error"),
+    }
