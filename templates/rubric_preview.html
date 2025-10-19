@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Rubric Preview</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 16px; }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+      th { background: #f5f5f5; }
+      .descriptor { white-space: pre-wrap; font-size: 13px; color: #333; }
+    </style>
+  </head>
+  <body>
+    <h1>Rubric Preview</h1>
+    <p><strong>Temp ID:</strong> {{ temp_id }}</p>
+    <p><strong>Overall Points Possible:</strong> {{ rubric.overall_points_possible }}</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Name</th>
+          <th>Max Score</th>
+          <th>Descriptors</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for criterion in criteria %}
+        <tr>
+          <td>{{ criterion.id }}</td>
+          <td>{{ criterion.name }}</td>
+          <td>{{ criterion.max_score }}</td>
+          <td class="descriptor">
+            {% if criterion.descriptors %}
+              {% for level, text in criterion.descriptors.items() %}
+                <strong>{{ level }}:</strong> {{ text }}<br />
+              {% endfor %}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </body>
+</html>

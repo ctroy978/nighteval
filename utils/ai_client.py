@@ -28,6 +28,32 @@ PROMPT_SCHEMA_SAMPLE = {
     ],
 }
 
+RUBRIC_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "overall_points_possible": {"type": "number"},
+        "criteria": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "name": {"type": "string"},
+                    "max_score": {"type": "number"},
+                    "descriptors": {
+                        "type": "object",
+                        "additionalProperties": {"type": "string"},
+                    },
+                },
+                "required": ["id", "max_score"],
+                "additionalProperties": True,
+            },
+        },
+    },
+    "required": ["criteria"],
+    "additionalProperties": True,
+}
+
 
 class AIClientError(Exception):
     """Raised when the AI client cannot produce a valid evaluation."""
@@ -44,6 +70,18 @@ class EvaluationResult:
     raw_text: str
     usage: Optional[Dict[str, Any]]
     schema_errors: List[str]
+
+
+@dataclass
+class RubricExtractionResult:
+    """Outcome of a rubric extraction request."""
+
+    status: Literal["ok", "retry_ok", "error"]
+    attempts: int
+    payload: Optional[Dict[str, Any]]
+    raw_text: str
+    usage: Optional[Dict[str, Any]]
+    errors: List[str]
 
 
 def evaluate_essay(
@@ -139,6 +177,71 @@ def evaluate_essay(
     )
 
 
+def extract_rubric_json(
+    rubric_text: str, *, retry_attempts: int = 1
+) -> RubricExtractionResult:
+    """Use the AI model to infer rubric JSON from raw text."""
+
+    try:
+        extractor_prompt = prompts.load_prompt(
+            "rubric_extractor.md", {"rubric_text": rubric_text}
+        )
+    except (prompts.PromptNotFoundError, prompts.PromptRenderError) as exc:
+        raise AIClientError(str(exc)) from exc
+
+    messages: List[Dict[str, str]] = [{"role": "system", "content": extractor_prompt}]
+    max_attempts = max(retry_attempts, 0) + 1
+    attempts = 0
+    last_raw = ""
+    usage: Optional[Dict[str, Any]] = None
+    errors: List[str] = []
+
+    while attempts < max_attempts:
+        attempts += 1
+        try:
+            completion = _run_completion(messages, RUBRIC_RESPONSE_SCHEMA)
+        except Exception as exc:  # pragma: no cover - network errors
+            raise AIClientError(str(exc)) from exc
+
+        last_raw = completion["content"]
+        usage = completion["usage"]
+
+        try:
+            payload = json.loads(last_raw)
+        except json.JSONDecodeError as exc:
+            errors = [f"Response was not valid JSON: {exc.msg}"]
+            if attempts >= max_attempts:
+                break
+            messages.append(_rubric_retry_message(errors))
+            continue
+
+        if not isinstance(payload, dict):
+            errors = ["Response must be a JSON object"]
+            if attempts >= max_attempts:
+                break
+            messages.append(_rubric_retry_message(errors))
+            continue
+
+        status: Literal["ok", "retry_ok"] = "retry_ok" if attempts > 1 else "ok"
+        return RubricExtractionResult(
+            status=status,
+            attempts=attempts,
+            payload=payload,
+            raw_text=last_raw,
+            usage=usage,
+            errors=[],
+        )
+
+    return RubricExtractionResult(
+        status="error",
+        attempts=attempts,
+        payload=None,
+        raw_text=last_raw,
+        usage=usage,
+        errors=errors,
+    )
+
+
 def _run_completion(messages: List[Dict[str, str]], schema: Dict[str, Any]) -> Dict[str, Any]:
     client = _get_client()
     completion = client.chat.completions.create(
@@ -166,6 +269,15 @@ def _retry_message(errors: List[str]) -> Dict[str, str]:
     error_block = "\n".join(f"- {error}" for error in errors)
     try:
         prompt = prompts.load_prompt("retry_context.md", {"errors": error_block})
+    except (prompts.PromptNotFoundError, prompts.PromptRenderError) as exc:
+        raise AIClientError(str(exc)) from exc
+    return {"role": "system", "content": prompt}
+
+
+def _rubric_retry_message(errors: List[str]) -> Dict[str, str]:
+    summary = "\n".join(f"- {error}" for error in errors)
+    try:
+        prompt = prompts.load_prompt("rubric_retry.md", {"error_summary": summary})
     except (prompts.PromptNotFoundError, prompts.PromptRenderError) as exc:
         raise AIClientError(str(exc)) from exc
     return {"role": "system", "content": prompt}
@@ -217,4 +329,3 @@ def _get_model() -> str:
             "Set AI_MODEL (or XAI_MODEL / OPENAI_MODEL) in the environment"
         )
     return model
-

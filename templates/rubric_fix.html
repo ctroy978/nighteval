@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fix Rubric JSON</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 16px; }
+      textarea { width: 100%; height: 360px; font-family: monospace; font-size: 14px; }
+      .toolbar { margin: 12px 0; display: flex; gap: 12px; }
+      .errors { color: #b40000; }
+      .warnings { color: #8a6d1d; }
+      .status { margin-top: 12px; }
+      button { padding: 8px 14px; font-size: 14px; cursor: pointer; }
+      code { background: #f0f0f0; padding: 2px 4px; }
+    </style>
+  </head>
+  <body>
+    <h1>Fix Rubric JSON</h1>
+    <div class="helper">
+      <details open>
+        <summary><strong>Rubric Checklist</strong></summary>
+        <ul>
+          <li>Provide <code>overall_points_possible</code> and make sure it equals the sum of every criterion <code>max_score</code>.</li>
+          <li>Each criterion needs an <code>id</code> (snake_case, unique, ≤40 chars), <code>name</code>, and <code>max_score</code> (integer &gt; 0).</li>
+          <li>Optional: add <code>descriptors</code> as a map of level strings (e.g. "4", "3", "2", "1") to guidance text.</li>
+          <li>Remove helper fields like <code>question</code> or <code>correct_answers</code>; the canonical schema only accepts <code>overall_points_possible</code> and <code>criteria</code>.</li>
+        </ul>
+      </details>
+    </div>
+    <textarea id="rubric-editor">{{ initial_json }}</textarea>
+
+    <div class="toolbar">
+      <button id="validate-btn">Validate</button>
+      <button id="save-btn">Save &amp; Use</button>
+      <button id="download-btn" type="button">Download JSON</button>
+    </div>
+
+    {% if warnings %}
+    <div class="warnings">
+      <strong>Warnings:</strong>
+      <ul>
+        {% for warning in warnings %}
+        <li>{{ warning }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <div class="status">
+      <ul id="error-list" class="errors">
+        {% for error in errors %}
+        <li>{{ error }}</li>
+        {% endfor %}
+      </ul>
+      <div id="success-message" style="color: #1b6e1d;"></div>
+    </div>
+
+    <script>
+      const editor = document.getElementById("rubric-editor");
+      const validateBtn = document.getElementById("validate-btn");
+      const saveBtn = document.getElementById("save-btn");
+      const downloadBtn = document.getElementById("download-btn");
+      const errorList = document.getElementById("error-list");
+      const successMessage = document.getElementById("success-message");
+
+      const saveUrl = "{{ save_url }}";
+      const validateUrl = "{{ validate_url }}";
+      const downloadUrl = "{{ download_url }}";
+
+      function renderErrors(errors, messages) {
+        errorList.innerHTML = "";
+        successMessage.textContent = "";
+        const uniqueMessages = new Set(messages || []);
+        if (errors && errors.length) {
+          errors.forEach((item) => {
+            const li = document.createElement("li");
+            li.textContent = `${item.loc}: ${item.msg}`;
+            errorList.appendChild(li);
+          });
+        }
+        uniqueMessages.forEach((msg) => {
+          const li = document.createElement("li");
+          li.textContent = msg;
+          errorList.appendChild(li);
+        });
+      }
+
+      async function submit(validateOnly) {
+        let parsed;
+        try {
+          parsed = JSON.parse(editor.value);
+        } catch (err) {
+          renderErrors([], ["JSON parse error: " + err.message]);
+          return;
+        }
+
+        const url = validateOnly ? validateUrl : saveUrl;
+        try {
+          const response = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rubric: parsed })
+          });
+          if (!response.ok) {
+            const detail = await response.json();
+            renderErrors([], [detail.detail || "Server error"]);
+            return;
+          }
+          const data = await response.json();
+          renderErrors(data.errors || [], data.error_messages || []);
+          if (data.ok && !data.validate_only) {
+            successMessage.textContent = "Rubric saved successfully.";
+          } else if (data.ok && data.validate_only) {
+            successMessage.textContent = "Rubric is valid. Save when you're ready.";
+          }
+        } catch (err) {
+          renderErrors([], [err.message || "Network error"]);
+        }
+      }
+
+      validateBtn.addEventListener("click", () => submit(true));
+      saveBtn.addEventListener("click", () => submit(false));
+      downloadBtn.addEventListener("click", () => {
+        window.location.href = downloadUrl;
+      });
+    </script>
+  </body>
+</html>

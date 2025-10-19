@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import os
 import shutil
@@ -156,6 +157,7 @@ class JobState:
     text_ok_count: int = 0
     low_text_warning_count: int = 0
     low_text_rejected_count: int = 0
+    rubric_version_hash: Optional[str] = None
     status: str = "running"
     started_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     finished_at: Optional[str] = None
@@ -180,6 +182,7 @@ class JobState:
                 "text_ok_count": self.text_ok_count,
                 "low_text_warning_count": self.low_text_warning_count,
                 "low_text_rejected_count": self.low_text_rejected_count,
+                "rubric_version_hash": self.rubric_version_hash,
                 "artifacts": self.artifacts.copy(),
                 "started_at": self.started_at,
                 "finished_at": self.finished_at,
@@ -262,6 +265,12 @@ def _run_job(
     try:
         rubric_payload = io_utils.read_json_file(str(rubric_path))
         rubric_model = validation.parse_rubric(rubric_payload)
+        rubric_dump = rubric_model.model_dump(mode="json")
+        rubric_hash = hashlib.sha256(
+            json.dumps(rubric_dump, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+        with state.lock:
+            state.rubric_version_hash = rubric_hash
         shutil.copy2(rubric_path, inputs_dir / "rubric.json")
     except ValidationError as exc:
         _finalise_state(state, "failed", error=f"Invalid rubric: {exc}")

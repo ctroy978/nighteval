@@ -105,12 +105,12 @@ Later phases add OCR fallback, rubric extraction, printable reports, and automat
 | **0**   | Single essay → AI → validated JSON output                  | ✅ Baseline workflow |
 | **1**   | Batch processing, CSV + ZIP, progress endpoint             | ✅ Completed (Phase 1) |
 | **1.2** | Integrate **PydanticAI** for structured output enforcement | ✅ Completed |
-| **2**   | OCR fallback for scanned PDFs                              | 🚧 Text validation gate (no OCR) |
-| **3**   | Rubric PDF → JSON extraction + correction UI               | 🔜                  |
+| **2**   | OCR fallback for scanned PDFs                              | 🕒 Pending (text-gate complete) |
+| **3**   | Rubric PDF → JSON extraction + correction UI               | 🚧 In progress |
 | **4**   | Printable summaries (txt/pdf) per student                  | 🔜                  |
 | **5**   | Email results (optional SMTP config)                       | 🔜                  |
 
-Phase 0 is complete and verified in the walking skeleton. Phases 1 and 1.2 are stable and in production. Phase 2 is underway with the new text validation gate and logging enhancements; OCR fallback remains on deck for a later sprint.
+Phase 0 is complete and verified in the walking skeleton. Phases 1 and 1.2 are stable and in production. Phase 2A (text validation gate) is delivered, with OCR fallback reserved for a future sprint. Phase 3 focuses on rubric extraction, validation, and the Fix JSON flow described below.
 
 ---
 
@@ -120,6 +120,16 @@ Phase 0 is complete and verified in the walking skeleton. Phases 1 and 1.2 are s
 - Per-essay text dumps now land in `outputs/text/` to make low-text diagnoses reproducible.
 - Job status exposes `text_ok_count`, `low_text_warning_count`, and `low_text_rejected_count` via the API and `state.json`.
 - Thresholds are configurable through ENV or `config/text_validation.yaml`, keeping deployments flexible without code edits.
+
+---
+
+## 🧾 Phase 3 Status
+
+- New `/rubrics/extract` endpoint accepts PDF or JSON uploads, runs the prompt-based extractor, and stores a canonical draft under `rubric-*/inputs/`.
+- Auto-converter normalises legacy shapes (`rubric.total_points`, level arrays) before Pydantic validation.
+- Fix JSON UI (`/rubrics/{temp_id}/fix`) provides one-screen editing with inline validation against the canonical schema.
+- Saved rubrics receive a `rubric_version_hash`, recorded in `state.json` and exposed through `GET /jobs/{id}`.
+- Extraction sessions persist `rubric_extract.log`, `rubric_source.pdf`, and `rubric_provisional.json` for troubleshooting.
 
 ---
 

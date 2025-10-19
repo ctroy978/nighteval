@@ -35,6 +35,12 @@ pip install -r requirements.txt
 | `MIN_TEXT_CHARS`        | Minimum total characters required before calling the AI (default `500`) |
 | `MIN_CHARS_PER_PAGE`    | Minimum average characters per page (default `200`) |
 | `ALLOW_PARTIAL_TEXT`    | Allow low-text PDFs through with a warning instead of rejection (default `false`) |
+| `RUBRIC_EXTRACTION_ENABLED` | Enable Phase 3 rubric extraction endpoints (default `true`) |
+| `RUBRIC_MAX_PAGES`      | Limit pages read from rubric PDFs before extraction (default `10`) |
+| `RUBRIC_MAX_CHARS`      | Cap characters forwarded to the extractor prompt (default `40000`) |
+| `RUBRIC_RETRY`          | Number of AI retries for rubric extraction (default `1`) |
+| `RUBRIC_REQUIRE_TOTALS_EQUAL` | Enforce that criterion totals match the overall points (default `true`) |
+| `RUBRIC_ID_MAXLEN`      | Maximum length for generated rubric IDs (default `40`) |
 
 The text validation settings can also be provided via a lightweight YAML file. Place a `config/text_validation.yaml` file alongside the app with:
 
@@ -96,6 +102,31 @@ Keep rubric files in JSON format; YAML is not currently supported.
 
 ---
 
+## Rubric Extraction API
+
+- `POST /rubrics/extract` — upload a rubric PDF or JSON file. Returns the canonical JSON and on-disk path when valid, otherwise a provisional draft plus validation errors.
+- `GET /rubrics/{temp_id}/fix` — single-page editor for repairing JSON with live validation (uses `POST /rubrics/{temp_id}/save`).
+- `POST /rubrics/{temp_id}/save` — validate and, when valid, persist the canonical `rubric.json` (append `?validate_only=1` to just check).
+- `GET /rubrics/{temp_id}/preview` — HTML summary of the canonical rubric.
+- `GET /rubrics/{temp_id}/download` — download the canonical JSON for reuse or archiving.
+
+Each extraction session writes to `<OUTPUT_BASE>/rubric-*/` with:
+
+```
+inputs/
+ ├── rubric.json              # canonical output when valid
+ ├── rubric_provisional.json  # latest draft (extractor or manual)
+ └── rubric_source.pdf        # original upload (if PDF)
+logs/
+ └── rubric_extract.log       # extraction + validation history
+```
+
+Use the returned `rubric.json` path when launching `/jobs`.
+
+The Fix JSON screen provides a single textarea editor. Use **Validate** to see issues, **Save & Use** to persist once valid, and **Download JSON** for local backups.
+
+---
+
 ## Running the API
 
 ```bash
@@ -150,6 +181,10 @@ Example response:
   "validated": 30,
   "schema_fail": 1,
   "retries_used": 4,
+  "text_ok_count": 29,
+  "low_text_warning_count": 1,
+  "low_text_rejected_count": 2,
+  "rubric_version_hash": "f5c8a9b420f74d0f9f0a8b23d1f9b0d7e5f1e21f4879f8620d84f6c2ef2d4c10",
   "artifacts": {
     "csv": "/data/sessions/20240101-120501-period1-oct/outputs/summary.csv",
     "zip": "/data/sessions/20240101-120501-period1-oct/outputs/evaluations.zip"
@@ -180,12 +215,13 @@ ${OUTPUT_BASE}/{timestamp}-{job_name}/
  │    ├── json/                 # validated per-student JSON results
  │    ├── json_failed/          # schema-corrective failures for diagnostics
  │    ├── text/                 # extracted essay text used for validation
- │    ├── summary.csv           # aggregate scores
- │    └── evaluations.zip       # archive of JSON results
+  │    ├── summary.csv           # aggregate scores
+  │    └── evaluations.zip       # archive of JSON results
 └── logs/
       ├── job.log               # timestamp | student | status | ms | retries
       ├── results.jsonl         # per-essay metadata (timings, validation status, text metrics, schema errors)
-      └── state.json            # current job snapshot used by the API
+      ├── state.json            # current job snapshot used by the API (includes `rubric_version_hash`)
+      └── rubric_extract.log    # present when the rubric came from a Phase 3 extraction session
 ```
 
 `summary.csv` lists every student alphabetically with total points earned, total points possible (sum of rubric `max_score` values), and one column per criterion (`criterion_<ID>_score`). Missing or invalid evaluations leave the score cells blank.
@@ -201,6 +237,8 @@ Template files live in `./prompts/`:
 - `system.md` — high-level system instruction for the model.
 - `rubric_evaluator.md` — main evaluation template with placeholders for the rubric, essay text, and schema.
 - `retry_context.md` — appended to the chat when the first response is invalid.
+- `rubric_extractor.md` — Phase 3 prompt that converts rubric text into the canonical JSON schema.
+- `rubric_retry.md` — concise correction instructions when the extractor emits invalid JSON.
 - `readme.md` — editing guidance.
 
 Templates support the placeholders `{{ rubric_json }}`, `{{ essay_text }}`, `{{ schema_json }}`, and `{{ criterion_ids }}`. Add additional files as future phases expand the AI workflow.
