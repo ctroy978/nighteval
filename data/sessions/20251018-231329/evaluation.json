@@ -1,0 +1,53 @@
+{
+  "overall": {
+    "points_earned": 14,
+    "points_possible": 20
+  },
+  "criteria": [
+    {
+      "id": "A",
+      "score": 3,
+      "evidence": {
+        "quote": "Nuclear fission is a poor choice for energy because it is dangerous, expensive, and can easily be replaced by true renewable resources."
+      },
+      "explanation": "Clear, focused thesis outlining main arguments on dangers, costs, and alternatives.",
+      "advice": "Add original insights to elevate thesis beyond standard arguments."
+    },
+    {
+      "id": "B",
+      "score": 3,
+      "evidence": {
+        "quote": "First it is important to understand how nuclear energy really works. ... Naturally, most people associate the word “nuclear” with “bomb.”"
+      },
+      "explanation": "Logical structure with paragraphs progressing from explanation to dangers and costs.",
+      "advice": "Enhance transitions between sections for seamless idea flow."
+    },
+    {
+      "id": "C",
+      "score": 3,
+      "evidence": {
+        "quote": "According to a study conducted in 1964, an accident like this would result in around 45,000 deaths, 100,000 injuries, and 17 billion dollars of property damage..."
+      },
+      "explanation": "Uses specific examples and citations like Pringle to support safety and cost claims.",
+      "advice": "Incorporate more varied sources beyond Wikipedia for robust evidence."
+    },
+    {
+      "id": "D",
+      "score": 3,
+      "evidence": {
+        "quote": "Nuclear power is not a good source of energy for the future because it is dangerous, expensive, and easily replaced by other clean energy sources."
+      },
+      "explanation": "Engages topic by countering pro-nuclear claims on safety and renewability.",
+      "advice": "Deepen critical insights with nuanced evaluation of counterarguments."
+    },
+    {
+      "id": "E",
+      "score": 2,
+      "evidence": {
+        "quote": "However , accidents like the one at Chernobyl have forced us to take a hard and thorough look at the minefield of nuclear power ."
+      },
+      "explanation": "Noticeable spacing errors and awkward phrasing affect clarity throughout.",
+      "advice": "Proofread for consistent spacing, grammar, and formal style."
+    }
+  ]
+}
