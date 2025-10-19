@@ -1,0 +1,53 @@
+{
+  "overall": {
+    "points_earned": 14,
+    "points_possible": 20
+  },
+  "criteria": [
+    {
+      "id": "thesis_argument",
+      "score": 3,
+      "evidence": {
+        "quote": "Gorbachev allowed for the Berlin wall to be taken down because he sought a greater purpose for the Soviet Union made possible by a socialist system with a more innovative approach. ... The main reasons for this are that he wanted a more dynamic socialist system, there was a need for internal economic recovery , and he desired to reposition the soviet union as a cooperative global power ."
+      },
+      "explanation": "Thesis is clear and focused, outlining three reasons that structure the essay adequately.",
+      "advice": "Enhance insight by tying reasons more explicitly to historical context early on."
+    },
+    {
+      "id": "organization_coherence",
+      "score": 3,
+      "evidence": {
+        "quote": "Gorbachev allowed for the Berlin wall to be taken down because he sought a greater purpose... However , these reforms placed other considerations on the economy for Mikhail Gorbachev . ... The Soviet leader ’s recognition of the Union’ s dire need for internal economic recovery shifted concern away from the Berlin Wall."
+      },
+      "explanation": "Clear structure with logical progression through reasons; transitions are effective overall.",
+      "advice": "Improve seamlessness by varying transition phrases for better flow."
+    },
+    {
+      "id": "development_support",
+      "score": 3,
+      "evidence": {
+        "quote": "Perestroika was Gorbachev ’s policy introduced in 1985 to reform the Soviet Union’ s stagnant economy... It led to the rise of privately owned stores, restaurants and manufacturers. Gorbachev also reduced restrictions on foreign trade."
+      },
+      "explanation": "Adequate evidence from sources supports main points with relevant examples.",
+      "advice": "Integrate more direct quotes from sources to bolster credibility."
+    },
+    {
+      "id": "critical_analysis",
+      "score": 3,
+      "evidence": {
+        "quote": "These policies show that Gorbachev was striving for a more dynamic socialist system because the policies he installed paved the way for East Germans to demand reforms and protest to have the Berlin Wall removed."
+      },
+      "explanation": "Solid analysis linking policies to wall's fall with appropriate engagement.",
+      "advice": "Deepen insights by exploring counterarguments or long-term impacts."
+    },
+    {
+      "id": "language_style_mechanics",
+      "score": 2,
+      "evidence": {
+        "quote": "The wall divided families and communities , and was inherently controlling , as its primary purpose was to restrict and regulate the movement of East Germans. ... Khruschchev , however when Mikhail Gorbachev was elected General Secretary"
+      },
+      "explanation": "Readable with noticeable spacing errors and minor grammar issues affecting clarity.",
+      "advice": "Proofread for formatting errors and spelling to improve professionalism."
+    }
+  ]
+}

@@ -21,6 +21,8 @@ from models import RubricModel
 
 from utils import ai_client, io_utils, pdf_tools, validation
 
+from .summary_renderer import SummaryRenderError, SummaryRenderer, SummarySettings
+
 try:  # Optional dependency loaded lazily to keep startup cheap.
     import yaml
 except ImportError:  # pragma: no cover - fallback when PyYAML is absent.
@@ -108,6 +110,78 @@ def _load_text_validation_config() -> TextValidationConfig:
     return config
 
 
+def _load_summary_settings() -> SummarySettings:
+    """Load printable summary settings from ENV and optional YAML files."""
+
+    settings = SummarySettings(
+        enabled=_bool_env("PRINT_SUMMARY_ENABLED", True),
+        markdown_enabled=_bool_env("MARKDOWN_SUMMARY", False),
+        line_width=max(_int_env("SUMMARY_LINE_WIDTH", 100), 40),
+        include_zip_readme=_bool_env("INCLUDE_ZIP_README", False),
+        readme_template=os.getenv("ZIP_README_TEMPLATE", "batch_header.txt.j2"),
+        template_dir=Path(os.getenv("SUMMARY_TEMPLATE_DIR", "templates")).expanduser(),
+        text_template=os.getenv("SUMMARY_TEXT_TEMPLATE", "student_summary.txt.j2"),
+        markdown_template=os.getenv("SUMMARY_MARKDOWN_TEMPLATE", "student_summary.md.j2"),
+        course_name=os.getenv("COURSE_NAME", ""),
+        teacher_name=os.getenv("TEACHER_NAME", ""),
+    )
+
+    yaml_paths: List[Path] = []
+    explicit_path = os.getenv("SUMMARY_CONFIG")
+    if explicit_path:
+        yaml_paths.append(Path(explicit_path).expanduser())
+    yaml_paths.append(Path("config/summary.yaml"))
+    yaml_paths.append(Path("config.yaml"))
+
+    for candidate in yaml_paths:
+        if not candidate or not candidate.exists():
+            continue
+        if yaml is None:
+            break
+        try:
+            with candidate.open("r", encoding="utf-8") as handle:
+                payload = yaml.safe_load(handle) or {}
+        except Exception:  # pragma: no cover - malformed YAML edge cases
+            continue
+
+        section = payload.get("summary") if isinstance(payload, dict) else None
+        if not isinstance(section, dict):
+            continue
+
+        settings.enabled = _coalesce_bool(section.get("enabled"), settings.enabled)
+        settings.markdown_enabled = _coalesce_bool(
+            section.get("markdown_enabled"), settings.markdown_enabled
+        )
+        settings.line_width = max(
+            _coalesce_int(section.get("line_width"), settings.line_width), 40
+        )
+        settings.include_zip_readme = _coalesce_bool(
+            section.get("include_zip_readme"), settings.include_zip_readme
+        )
+        text_template = section.get("text_template")
+        if isinstance(text_template, str):
+            settings.text_template = text_template
+        markdown_template = section.get("markdown_template")
+        if isinstance(markdown_template, str):
+            settings.markdown_template = markdown_template
+        readme_template = section.get("readme_template")
+        if isinstance(readme_template, str):
+            settings.readme_template = readme_template
+        template_dir = section.get("template_dir")
+        if isinstance(template_dir, str):
+            settings.template_dir = Path(template_dir).expanduser()
+        course_name = section.get("course_name")
+        if isinstance(course_name, str):
+            settings.course_name = course_name
+        teacher_name = section.get("teacher_name")
+        if isinstance(teacher_name, str):
+            settings.teacher_name = teacher_name
+        break
+
+    settings.template_dir = settings.template_dir.resolve()
+    return settings
+
+
 FRIENDLY_FIX_MESSAGE_TEMPLATE = (
     "\"{filename}\" appears to contain little or no selectable text. Please export "
     "from Google Docs/Word using File → Download → PDF (not a scan or photo). You "
@@ -148,6 +222,7 @@ class JobState:
     job_id: str
     job_dir: Path
     total: int
+    job_name: Optional[str] = None
     processed: int = 0
     succeeded: int = 0
     failed: int = 0
@@ -171,6 +246,7 @@ class JobState:
         with self.lock:
             data: Dict[str, Any] = {
                 "job_id": self.job_id,
+                "job_name": self.job_name,
                 "status": self.status,
                 "total": self.total,
                 "processed": self.processed,
@@ -220,7 +296,7 @@ class JobManager:
         job_dir = self.output_base / job_id
         job_dir.mkdir(parents=True, exist_ok=True)
 
-        state = JobState(job_id=job_id, job_dir=job_dir, total=len(pdf_paths))
+        state = JobState(job_id=job_id, job_dir=job_dir, job_name=job_name, total=len(pdf_paths))
 
         with self._lock:
             if job_id in self._jobs:
@@ -254,12 +330,20 @@ def _run_job(
     outputs_json_dir = outputs_dir / "json"
     outputs_failed_dir = outputs_dir / "json_failed"
     outputs_text_dir = outputs_dir / "text"
+    outputs_print_dir = outputs_dir / "print"
+    outputs_markdown_dir = outputs_dir / "print_md"
     logs_dir = state.job_dir / "logs"
+
+    summary_settings = _load_summary_settings()
 
     essays_dir.mkdir(parents=True, exist_ok=True)
     outputs_json_dir.mkdir(parents=True, exist_ok=True)
     outputs_failed_dir.mkdir(parents=True, exist_ok=True)
     outputs_text_dir.mkdir(parents=True, exist_ok=True)
+    if summary_settings.enabled:
+        outputs_print_dir.mkdir(parents=True, exist_ok=True)
+    if summary_settings.markdown_enabled:
+        outputs_markdown_dir.mkdir(parents=True, exist_ok=True)
     logs_dir.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -283,6 +367,9 @@ def _run_job(
     _write_state_snapshot(state)
 
     summary_builder = _SummaryBuilder(rubric_model)
+    summary_renderer = SummaryRenderer(rubric_model, summary_settings)
+    printed_students: List[str] = []
+    job_display_name = state.job_name or state.job_id
     job_log_path = logs_dir / "job.log"
     results_log_path = logs_dir / "results.jsonl"
 
@@ -313,6 +400,9 @@ def _run_job(
             text_validation_status = "ok"
             text_validation_message: Optional[str] = None
             thresholds = text_validation_config.thresholds
+            summary_modes: Optional[str] = None
+            summary_bytes = 0
+            printed_flag = False
 
             try:
                 extraction = pdf_tools.extract_text_with_metadata(str(essay_path))
@@ -358,8 +448,37 @@ def _run_job(
 
                     if result.status in {"ok", "retry_ok"} and result.payload is not None:
                         payload = result.payload
-                        _write_student_json(outputs_json_dir, student_name, payload)
-                        summary_builder.add_success(student_name, payload)
+                        try:
+                            summary_modes, summary_bytes, printed_flag = _generate_printable_summaries(
+                                summary_renderer,
+                                payload,
+                                student_name=student_name,
+                                job_name=job_display_name,
+                                outputs_print_dir=outputs_print_dir,
+                                outputs_markdown_dir=outputs_markdown_dir,
+                                text_validation_status=text_validation_status,
+                            )
+                            if printed_flag:
+                                printed_students.append(student_name)
+                        except (SummaryRenderError, OSError) as exc:
+                            status = "failed"
+                            error = f"Printable summary failed: {exc}"
+                            validation_status = "error"
+                            summary_builder.add_failure(student_name)
+                            _write_failure_json(
+                                outputs_failed_dir,
+                                student_name,
+                                str(error),
+                                raw_response,
+                                schema_errors,
+                            )
+                            payload = None
+                            summary_modes = None
+                            summary_bytes = 0
+                            printed_flag = False
+                        else:
+                            _write_student_json(outputs_json_dir, student_name, payload)
+                            summary_builder.add_success(student_name, payload)
                     elif result.status == "schema_fail":
                         status = "schema_fail"
                         error = (
@@ -427,6 +546,12 @@ def _run_job(
                     f"pages={page_count}",
                     f"avg={chars_per_page_avg:.1f}",
                 ]
+            elif status == "success":
+                extra_fields = [
+                    str(duration_ms),
+                    str(retries),
+                    f"printed={'true' if printed_flag else 'false'}",
+                ]
             _append_job_log(
                 job_log,
                 student_name,
@@ -454,6 +579,8 @@ def _run_job(
                 text_validation_status=text_validation_status,
                 text_validation_thresholds=thresholds,
                 text_validation_message=text_validation_message,
+                print_summary=summary_modes,
+                summary_bytes=summary_bytes,
             )
 
             _update_counters(
@@ -469,7 +596,18 @@ def _run_job(
         summary_path = outputs_dir / "summary.csv"
         _write_summary_csv(summary_path, summary_builder)
         zip_path = outputs_dir / "evaluations.zip"
-        _write_zip_archive(zip_path, outputs_json_dir)
+        zip_readme = summary_renderer.render_batch_header(
+            job_name=job_display_name,
+            generated_at=datetime.utcnow(),
+            students=printed_students,
+        )
+        _write_zip_archive(
+            zip_path,
+            outputs_json_dir,
+            text_dir=outputs_print_dir if summary_settings.enabled else None,
+            markdown_dir=outputs_markdown_dir if summary_settings.markdown_enabled else None,
+            readme_content=zip_readme,
+        )
         with state.lock:
             state.artifacts["csv"] = str(summary_path)
             state.artifacts["zip"] = str(zip_path)
@@ -519,6 +657,8 @@ def _append_results_log(
     text_validation_status: str,
     text_validation_thresholds: Dict[str, int],
     text_validation_message: Optional[str],
+    print_summary: Optional[str] = None,
+    summary_bytes: int = 0,
 ) -> None:
     entry = {
         "timestamp": datetime.utcnow().isoformat(),
@@ -544,6 +684,10 @@ def _append_results_log(
         entry["raw"] = raw_response
     if text_validation_message:
         entry["text_validation_message"] = text_validation_message
+    if print_summary:
+        entry["print_summary"] = print_summary
+    if summary_bytes:
+        entry["summary_bytes"] = summary_bytes
 
     handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
     handle.flush()
@@ -621,11 +765,26 @@ def _write_summary_csv(target: Path, summary: "_SummaryBuilder") -> None:
             writer.writerow(row)
 
 
-def _write_zip_archive(target: Path, json_dir: Path) -> None:
+def _write_zip_archive(
+    target: Path,
+    json_dir: Path,
+    *,
+    text_dir: Optional[Path] = None,
+    markdown_dir: Optional[Path] = None,
+    readme_content: Optional[str] = None,
+) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     with ZipFile(target, "w", compression=ZIP_DEFLATED) as archive:
+        if readme_content:
+            archive.writestr("README.txt", readme_content)
         for json_file in sorted(json_dir.glob("*.json")):
-            archive.write(json_file, arcname=json_file.name)
+            archive.write(json_file, arcname=f"json/{json_file.name}")
+        if text_dir and text_dir.exists():
+            for txt_file in sorted(text_dir.glob("*.txt")):
+                archive.write(txt_file, arcname=f"print/{txt_file.name}")
+        if markdown_dir and markdown_dir.exists():
+            for md_file in sorted(markdown_dir.glob("*.md")):
+                archive.write(md_file, arcname=f"print_md/{md_file.name}")
 
 
 def _copy_essays(files: Iterable[Path], dest_dir: Path) -> List[tuple[str, Path]]:
@@ -723,3 +882,54 @@ class _SummaryBuilder:
                 return str(int(value))
             return f"{value:.2f}"
         return str(value)
+
+
+def _generate_printable_summaries(
+    renderer: SummaryRenderer,
+    payload: Dict[str, Any],
+    *,
+    student_name: str,
+    job_name: str,
+    outputs_print_dir: Path,
+    outputs_markdown_dir: Path,
+    text_validation_status: str,
+) -> tuple[Optional[str], int, bool]:
+    """Render and persist printable summaries for a student."""
+
+    flags: Dict[str, Any] = {}
+    payload_flags = payload.get("flags") if isinstance(payload, dict) else None
+    if isinstance(payload_flags, dict):
+        flags.update(payload_flags)
+    if text_validation_status == "low_text_warning":
+        flags.setdefault("low_text_warning", True)
+
+    rendered_at = datetime.utcnow()
+    result = renderer.render_student(
+        student_name=student_name,
+        evaluation=payload,
+        job_name=job_name,
+        generated_at=rendered_at,
+        flags=flags,
+    )
+
+    summary_bytes = 0
+    summary_modes: Optional[str] = None
+    printed = False
+
+    if result.text and result.text.strip():
+        outputs_print_dir.mkdir(parents=True, exist_ok=True)
+        target = outputs_print_dir / f"{student_name}.txt"
+        io_utils.write_text(target, result.text)
+        summary_bytes += len(result.text.encode("utf-8"))
+        summary_modes = "txt"
+        printed = True
+
+    if result.markdown and result.markdown.strip():
+        outputs_markdown_dir.mkdir(parents=True, exist_ok=True)
+        target = outputs_markdown_dir / f"{student_name}.md"
+        io_utils.write_text(target, result.markdown)
+        summary_bytes += len(result.markdown.encode("utf-8"))
+        summary_modes = "txt,md" if summary_modes == "txt" else "md"
+        printed = True
+
+    return summary_modes, summary_bytes, printed

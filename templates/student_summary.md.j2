@@ -1,0 +1,33 @@
+# {{ student_name }}
+
+- **Job:** {{ job_name }}
+- **Generated:** {{ generated_at }}
+{% if COURSE_NAME or TEACHER_NAME -%}
+- **Course:** {{ COURSE_NAME }}{% if COURSE_NAME and TEACHER_NAME %} — {% endif %}{{ TEACHER_NAME }}
+{% endif %}
+
+## Overall
+
+- Score: {{ eval.overall.points_earned }} / {{ eval.overall.points_possible }}
+
+## Criteria
+
+| ID | Score | Evidence | Explanation | Advice |
+| -- | ----- | -------- | ----------- | ------ |
+{% for row in criteria_rows -%}
+{% set evidence_lines = wrap_lines(row.evidence, width=60, max_lines=3) %}
+{% set explanation_lines = wrap_lines(row.explanation, width=30) %}
+{% set advice_lines = wrap_lines(row.advice, width=30) %}
+| {{ row.id }} | {{ row.score }} | {{ evidence_lines|join('<br>') }} | {{ explanation_lines|join('<br>') }} | {{ advice_lines|join('<br>') }} |
+{% endfor %}
+
+{% if flags -%}
+## Notes
+
+{% if flags.low_text_warning %}- Essay text contained limited content; evaluation may be partial.{% endif %}
+{% for key, value in flags.items() if key != 'low_text_warning' and value -%}
+- {{ key.replace('_', ' ') | title }}
+{% endfor -%}
+{% endif %}
+
+{% if COURSE_NAME %}_{{ COURSE_NAME }}_{% endif %}{% if COURSE_NAME and TEACHER_NAME %} — {% endif %}{% if TEACHER_NAME %}_{{ TEACHER_NAME }}_{% endif %}

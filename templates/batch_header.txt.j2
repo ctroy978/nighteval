@@ -1,0 +1,17 @@
+Batch: {{ job_name }}
+Generated: {{ generated_at }}
+Students with summaries: {{ student_count }}
+
+Contents:
+- json/<Student>.json
+- print/<Student>.txt
+- print_md/<Student>.md (when enabled)
+
+{% if students -%}
+Students:
+{% for name in students -%}
+- {{ name }}
+{% endfor -%}
+{% else -%}
+No printable summaries were generated for this batch.
+{% endif %}

@@ -148,6 +148,18 @@ async def job_artifact(job_id: str, artifact: str):  # type: ignore[override]
     return FileResponse(path)
 
 
+@app.get("/jobs/{job_id}/students/{student_name}/summary.txt")
+async def student_summary_txt(job_id: str, student_name: str):  # type: ignore[override]
+    path = _resolve_student_summary_path(job_id, student_name, "txt")
+    return FileResponse(path, media_type="text/plain", filename=path.name)
+
+
+@app.get("/jobs/{job_id}/students/{student_name}/summary.md")
+async def student_summary_md(job_id: str, student_name: str):  # type: ignore[override]
+    path = _resolve_student_summary_path(job_id, student_name, "md")
+    return FileResponse(path, media_type="text/markdown", filename=path.name)
+
+
 @app.post("/rubrics/extract", response_model=RubricExtractResponseModel)
 async def rubric_extract(
     rubric_file: UploadFile = File(...),
@@ -273,6 +285,7 @@ def _load_snapshot_from_disk(job_id: str) -> Optional[Dict[str, Any]]:
     data.setdefault("rubric_version_hash", None)
     data.setdefault("processed", 0)
     data.setdefault("total", 0)
+    data.setdefault("job_name", None)
     artifacts = data["artifacts"]
     if "csv" not in artifacts:
         artifacts["csv"] = None
@@ -323,3 +336,27 @@ def _serialize_rubric_extract(result: RubricExtractResponse) -> Dict[str, Any]:
         "save_url": result.save_url,
         "canonical_path": result.canonical_path,
     }
+
+
+def _resolve_student_summary_path(job_id: str, student_name: str, extension: str) -> Path:
+    safe_name = _validate_student_name(student_name)
+    base = _resolve_output_base()
+    if extension == "txt":
+        directory = base / job_id / "outputs" / "print"
+    else:
+        directory = base / job_id / "outputs" / "print_md"
+    path = directory / f"{safe_name}.{extension}"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Summary not available for this student")
+    return path
+
+
+def _validate_student_name(student_name: str) -> str:
+    if not student_name:
+        raise HTTPException(status_code=400, detail="Student name must not be empty")
+    candidate = Path(student_name)
+    if candidate.name != student_name:
+        raise HTTPException(status_code=400, detail="Invalid student name")
+    if candidate.name in {".", ".."}:
+        raise HTTPException(status_code=400, detail="Invalid student name")
+    return candidate.name

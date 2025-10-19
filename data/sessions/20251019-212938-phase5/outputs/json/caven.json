@@ -1,0 +1,53 @@
+{
+  "overall": {
+    "points_earned": 17,
+    "points_possible": 20
+  },
+  "criteria": [
+    {
+      "id": "thesis_argument",
+      "score": 3,
+      "evidence": {
+        "quote": "Despite logistical hurdles, \"The Line\" stands as a visionary urban experiment and an ideal place to live due to its pioneering sustainability features, innovative urban design, and focus on enhancing residents’ quality of life."
+      },
+      "explanation": "Thesis is clear and focused, outlining key reasons effectively.",
+      "advice": "Strengthen originality by adding unique perspectives on challenges."
+    },
+    {
+      "id": "organization_coherence",
+      "score": 4,
+      "evidence": {
+        "quote": "One of the most compelling aspects of \"The Line\" is its commitment to sustainability. ... This aligns with the United Nations' Sustainable Development Goal 11..."
+      },
+      "explanation": "Seamless progression from sustainability to design and well-being with logical flow.",
+      "advice": "Maintain strong transitions; essay already excels here."
+    },
+    {
+      "id": "development_support",
+      "score": 4,
+      "evidence": {
+        "quote": "Research has shown that walkable cities promote active living, which can lead to longer and healthier lives. Regular walking reduces the risk of chronic diseases... (CNUWalkable)."
+      },
+      "explanation": "Rich evidence from credible sources integrated smoothly to support claims.",
+      "advice": "Continue citing diverse sources for robust backing."
+    },
+    {
+      "id": "critical_analysis",
+      "score": 3,
+      "evidence": {
+        "quote": "This design not only enhances convenience but also fosters a sense of community by encouraging pedestrian interactions."
+      },
+      "explanation": "Solid interpretation of benefits with engagement, but lacks deeper insights.",
+      "advice": "Incorporate more original analysis of potential drawbacks."
+    },
+    {
+      "id": "language_style_mechanics",
+      "score": 3,
+      "evidence": {
+        "quote": "The city's high-speed rail system, allowing end-to-end transit in just 20 minutes, further enhances connectivity..."
+      },
+      "explanation": "Clear language with minor formatting issues; effective overall.",
+      "advice": "Proofread for consistent spacing and polish phrasing."
+    }
+  ]
+}

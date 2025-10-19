@@ -1,1 +1,0 @@
-{"timestamp": "2025-10-19T20:05:58.204673", "event": "rubric_validation_failed", "errors": ["criteria: Field required", "rubric: Extra inputs are not permitted", "question: Extra inputs are not permitted", "correct_answers: Extra inputs are not permitted", "partial_credit_answers: Extra inputs are not permitted", "minimal_credit_answers: Extra inputs are not permitted"]}
