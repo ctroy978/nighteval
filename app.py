@@ -45,6 +45,9 @@ class JobResponse(BaseModel):
 class JobStatusResponse(JobResponse):
     succeeded: int
     failed: int
+    validated: int
+    schema_fail: int
+    retries_used: int
     artifacts: Dict[str, Optional[str]]
     started_at: Optional[str]
     finished_at: Optional[str]
@@ -118,6 +121,13 @@ def _load_snapshot_from_disk(job_id: str) -> Optional[Dict[str, Any]]:
 
     # Ensure required keys exist for consistent responses.
     data.setdefault("artifacts", {})
+    data.setdefault("succeeded", 0)
+    data.setdefault("failed", 0)
+    data.setdefault("validated", 0)
+    data.setdefault("schema_fail", 0)
+    data.setdefault("retries_used", 0)
+    data.setdefault("processed", 0)
+    data.setdefault("total", 0)
     artifacts = data["artifacts"]
     if "csv" not in artifacts:
         artifacts["csv"] = None
@@ -135,6 +145,9 @@ def _format_status_response(snapshot: Dict[str, Any]) -> Dict[str, Any]:
         "processed": snapshot.get("processed", 0),
         "succeeded": snapshot.get("succeeded", 0),
         "failed": snapshot.get("failed", 0),
+        "validated": snapshot.get("validated", 0),
+        "schema_fail": snapshot.get("schema_fail", 0),
+        "retries_used": snapshot.get("retries_used", 0),
         "artifacts": {
             "csv": artifacts.get("csv"),
             "zip": artifacts.get("zip"),

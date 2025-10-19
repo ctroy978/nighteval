@@ -1,61 +1,72 @@
-"""Validation helpers for AI evaluation payloads."""
+"""Structured validation helpers built on Pydantic models."""
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable
+from typing import Any, Dict, List
+
+from pydantic import ValidationError
+
+from models import EvaluationModel, RubricModel
+
+WORD_LIMIT = 25
+LINE_LIMIT = 3
 
 
-class EvaluationValidationError(ValueError):
-    """Raised when an evaluation payload is missing required fields."""
+def parse_rubric(payload: Any) -> RubricModel:
+    """Return a validated rubric model."""
+
+    return RubricModel.model_validate(payload)
 
 
-def validate_evaluation_payload(payload: Dict[str, Any], rubric: Dict[str, Any]) -> None:
-    """Raise if the evaluation payload is not structurally sound."""
+def validate_evaluation(payload: Dict[str, Any], rubric: RubricModel) -> EvaluationModel:
+    """Validate an evaluation payload against the rubric-derived context."""
 
-    if not isinstance(payload, dict):
-        raise EvaluationValidationError("Evaluation payload must be a dictionary")
-
-    _validate_overall(payload.get("overall"))
-    _validate_criteria(payload.get("criteria"), rubric.get("criteria", []))
+    context = rubric.validation_context()
+    return EvaluationModel.model_validate(payload, context=context)
 
 
-def _validate_overall(overall: Any) -> None:
-    if not isinstance(overall, dict):
-        raise EvaluationValidationError("Missing 'overall' object in evaluation payload")
+def format_validation_errors(error: ValidationError) -> List[str]:
+    """Convert a Pydantic ValidationError into concise bullet strings."""
 
-    for key in ("points_earned", "points_possible"):
-        value = overall.get(key)
-        if not isinstance(value, (int, float)):
-            raise EvaluationValidationError(f"overall.{key} must be a number")
+    messages: List[str] = []
+    for issue in error.errors():
+        location = ".".join(str(part) for part in issue["loc"])
+        if location:
+            messages.append(f"{location}: {issue['msg']}")
+        else:
+            messages.append(issue["msg"])
+    return messages
 
 
-def _validate_criteria(criteria: Any, rubric_criteria: Iterable[Dict[str, Any]]) -> None:
-    if not isinstance(criteria, list):
-        raise EvaluationValidationError("'criteria' must be a list")
+def normalize_evaluation(
+    evaluation: EvaluationModel,
+    *,
+    trim_text_fields: bool = True,
+) -> Dict[str, Any]:
+    """Return a JSON-serialisable dict, optionally trimming textual fields."""
 
-    required_ids = {str(item.get("id")) for item in rubric_criteria if item.get("id") is not None}
-    seen_ids = set()
+    data = evaluation.model_dump(mode="python")
+    if not trim_text_fields:
+        return data
 
-    for entry in criteria:
-        if not isinstance(entry, dict):
-            raise EvaluationValidationError("Each criterion entry must be an object")
+    for criterion in data.get("criteria", []):
+        evidence = criterion.get("evidence", {})
+        if isinstance(evidence, dict) and "quote" in evidence:
+            evidence["quote"] = _trim_lines(evidence["quote"], LINE_LIMIT)
+        for key in ("explanation", "advice"):
+            if key in criterion and isinstance(criterion[key], str):
+                criterion[key] = _trim_words(criterion[key], WORD_LIMIT)
+    return data
 
-        crit_id = str(entry.get("id", ""))
-        if not crit_id:
-            raise EvaluationValidationError("Each criterion entry must include an 'id'")
 
-        seen_ids.add(crit_id)
-        if not isinstance(entry.get("score"), (int, float)):
-            raise EvaluationValidationError(f"Criterion {crit_id} has invalid score")
+def _trim_lines(text: str, limit: int) -> str:
+    lines = [line.strip() for line in text.splitlines()]
+    trimmed = [line for line in lines if line][:limit]
+    return "\n".join(trimmed)
 
-        evidence = entry.get("evidence")
-        if not isinstance(evidence, dict) or "quote" not in evidence:
-            raise EvaluationValidationError(f"Criterion {crit_id} must include evidence.quote")
 
-        for field in ("explanation", "advice"):
-            if not isinstance(entry.get(field), str):
-                raise EvaluationValidationError(f"Criterion {crit_id} must include '{field}'")
-
-    if required_ids and not required_ids.issubset(seen_ids):
-        missing = ", ".join(sorted(required_ids - seen_ids))
-        raise EvaluationValidationError(f"Evaluation missing required criteria: {missing}")
+def _trim_words(text: str, limit: int) -> str:
+    words: List[str] = [word for word in text.split() if word]
+    if len(words) <= limit:
+        return " ".join(words)
+    return " ".join(words[:limit])

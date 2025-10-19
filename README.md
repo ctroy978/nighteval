@@ -1,6 +1,6 @@
-# Batch Essay Evaluator — Phase 1
+# Batch Essay Evaluator — Phase 1.2
 
-Phase 1 upgrades the prototype to process entire folders of student essays, generate batch artifacts, and expose job progress APIs. Each job copies the source PDFs, evaluates them sequentially via an OpenAI-compatible model, records results, and produces both CSV and ZIP summaries.
+Phase 1.2 keeps the batch workflow from Phase 1 but hardens reliability with structured output. Essays are still processed sequentially, yet every model response is now validated against Pydantic models, auto-retried on schema errors, and trimmed server-side before being written to disk.
 
 ---
 
@@ -26,9 +26,10 @@ pip install -r requirements.txt
 | `AI_MODEL`              | Model identifier (e.g. `gpt-4-turbo`)        |
 | `AI_API_KEY`            | API key for the selected provider            |
 | `OUTPUT_BASE`           | Root directory for job sessions (`/data/sessions` default) |
-| `MAX_PARALLEL`          | Reserved for future parallelism (not used)   |
-| `AI_TIMEOUT_SECONDS`    | Request timeout in seconds (default 60)      |
-| `AI_RETRY`              | Reserved for future use (Phase 2+)           |
+| `AI_TIMEOUT_SECONDS`    | Request timeout in seconds (default 120)     |
+| `STRUCTURED_OUTPUT`     | Enable Pydantic-validated JSON output (default `true`) |
+| `VALIDATION_RETRY`      | Number of schema retries per essay (default `1`) |
+| `TRIM_TEXT_FIELDS`      | Trim quotes/explanations/advice server-side (default `true`) |
 | `ZIP_INCLUDE_PRINTABLE` | Reserved for printable summaries (Phase 4)   |
 
 Prompts live under `./prompts/` and are rendered with Jinja2. Edit these Markdown templates to tweak the evaluator without touching Python code.
@@ -86,6 +87,9 @@ Example response:
   "processed": 32,
   "succeeded": 30,
   "failed": 2,
+  "validated": 30,
+  "schema_fail": 1,
+  "retries_used": 4,
   "artifacts": {
     "csv": "/data/sessions/20240101-120501-period1-oct/outputs/summary.csv",
     "zip": "/data/sessions/20240101-120501-period1-oct/outputs/evaluations.zip"
@@ -113,18 +117,19 @@ ${OUTPUT_BASE}/{timestamp}-{job_name}/
  │    ├── essays/               # copied source PDFs
  │    └── rubric.json
  ├── outputs/
- │    ├── json/                 # per-student JSON results (success or error)
+ │    ├── json/                 # validated per-student JSON results
+ │    ├── json_failed/          # schema-corrective failures for diagnostics
  │    ├── summary.csv           # aggregate scores
  │    └── evaluations.zip       # archive of JSON results
- └── logs/
+└── logs/
       ├── job.log               # timestamp | student | status | ms | retries
-      ├── results.jsonl         # per-essay metadata (timings, tokens, failures)
+      ├── results.jsonl         # per-essay metadata (timings, validation status, schema errors)
       └── state.json            # current job snapshot used by the API
 ```
 
 `summary.csv` lists every student alphabetically with total points earned, total points possible (sum of rubric `max_score` values), and one column per criterion (`criterion_<ID>_score`). Missing or invalid evaluations leave the score cells blank.
 
-`evaluations.zip` contains one `{Student Name}.json` per essay. Failed evaluations include an `error` message so downstream tooling can flag them.
+`evaluations.zip` contains one `{Student Name}.json` per validated essay. Schema failures are left in `outputs/json_failed/` with the raw response and error list for manual follow-up.
 
 ---
 
@@ -137,17 +142,17 @@ Template files live in `./prompts/`:
 - `retry_context.md` — appended to the chat when the first response is invalid.
 - `readme.md` — editing guidance.
 
-Templates support the placeholders `{{ rubric_json }}`, `{{ essay_text }}`, and `{{ schema_json }}`. Add additional files as future phases expand the AI workflow.
+Templates support the placeholders `{{ rubric_json }}`, `{{ essay_text }}`, `{{ schema_json }}`, and `{{ criterion_ids }}`. Add additional files as future phases expand the AI workflow.
 
 ---
 
-## Definition of Done (Phase 1)
+## Definition of Done (Phase 1.2)
 
 - Accepts a folder of PDFs plus `rubric.json` via `POST /jobs`.
-- Processes essays sequentially, saving per-student JSON immediately.
-- Validates model output (structure + required fields) and retries once on invalid JSON.
-- Continues processing after individual failures, logging them and leaving CSV cells blank.
-- Produces `summary.csv` and `evaluations.zip` in the outputs directory.
-- Streams job progress through `GET /jobs/{job_id}` and exposes artifacts for download.
-- Writes `job.log`, `results.jsonl`, and `state.json` for observability.
-- Loads prompt text dynamically from `/prompts/`.
+- Parses the rubric and evaluation results with Pydantic models, enforcing criterion coverage and score bounds.
+- Retries each essay once on schema errors, logging `validation_status`, `schema_errors`, and `retries_used`.
+- Writes trimmed, validated JSON per student (successes in `outputs/json/`, schema failures in `outputs/json_failed/`).
+- Builds `summary.csv` from validated results only and packages them into `evaluations.zip`.
+- Streams progress, counters, and artifact locations via `GET /jobs/{job_id}`.
+- Persists observability artifacts: `job.log`, `results.jsonl`, and `state.json` with validation counters.
+- Loads prompt templates dynamically from `/prompts/`.

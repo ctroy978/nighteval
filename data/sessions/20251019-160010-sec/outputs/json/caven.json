@@ -1,0 +1,53 @@
+{
+  "overall": {
+    "points_earned": 19,
+    "points_possible": 20
+  },
+  "criteria": [
+    {
+      "id": "A",
+      "score": 4,
+      "evidence": {
+        "quote": "Despite logistical hurdles, \"The Line\" stands as a visionary urban experiment and an ideal place to live due to its pioneering sustainability features, innovative urban design, and focus on enhancing residents’ quality of life."
+      },
+      "explanation": "Clear, insightful thesis guides the essay with a strong, original argument on sustainability and livability.",
+      "advice": "Deepen counterarguments like hurdles for more originality."
+    },
+    {
+      "id": "B",
+      "score": 4,
+      "evidence": {
+        "quote": "One of the most compelling aspects of \"The Line\" is its commitment to sustainability. The city is designed to run entirely on renewable energy... This aligns with the United Nations' Sustainable Development Goal 11..."
+      },
+      "explanation": "Exceptionally well-organized with seamless transitions and coherent idea progression.",
+      "advice": "Maintain this structure; vary transition phrases for even smoother flow."
+    },
+    {
+      "id": "C",
+      "score": 4,
+      "evidence": {
+        "quote": "Research has shown that walkable cities promote active living, which can lead to longer and healthier lives. Regular walking reduces the risk of chronic diseases such as Type 2 diabetes and heart disease... (CNUWalkable)."
+      },
+      "explanation": "Rich, relevant evidence from credible sources smoothly integrated to support claims.",
+      "advice": "Continue integrating sources; ensure all citations are fully formatted."
+    },
+    {
+      "id": "D",
+      "score": 3,
+      "evidence": {
+        "quote": "Studies have shown that access to green spaces can reduce stress, improve mood, and enhance overall well-being (PMCGreenSpaces). Additionally, the city's design includes microclimatic spaces..."
+      },
+      "explanation": "Solid analysis with clear interpretation, but lacks deeper critical insights.",
+      "advice": "Add more original insights beyond source summaries for sophistication."
+    },
+    {
+      "id": "E",
+      "score": 4,
+      "evidence": {
+        "quote": "In conclusion, \"The Line\" represents a bold and innovative approach to urban development that addresses many of the challenges modern cities face. Through its commitment to sustainability..."
+      },
+      "explanation": "Polished, precise language with varied sentences; essentially error-free.",
+      "advice": "Proofread for minor spacing issues in citations to perfect mechanics."
+    }
+  ]
+}

@@ -74,8 +74,10 @@ The application reads configuration from environment variables (loaded via `.env
 | `AI_PROVIDER_URL`        | Yes      | Base URL of the OpenAI-compatible API endpoint.                    |
 | `AI_API_KEY`             | Yes      | API key/token for the model provider.                              |
 | `AI_MODEL`               | Yes      | Model name (defaults to `gpt-4-turbo`).                            |
-| `AI_TIMEOUT_SECONDS`     | No       | HTTP timeout for AI calls (default `60`).                          |
-| `MAX_CONCURRENT_JOBS`    | No       | Reserved for future parallelism (default `1`).                     |
+| `AI_TIMEOUT_SECONDS`     | No       | HTTP timeout for AI calls (default `120`).                         |
+| `STRUCTURED_OUTPUT`      | No       | Enforce Pydantic-validated JSON responses (default `true`).        |
+| `VALIDATION_RETRY`       | No       | Additional schema retries per essay (default `1`).                 |
+| `TRIM_TEXT_FIELDS`       | No       | Trim quote/explanation/advice field lengths (default `true`).      |
 | `PDF_TEXT_EXTRACTOR`     | No       | `pypdf2`, `pdfminer`, or `mixed`; default auto-select.             |
 | `ENABLE_OCR_FALLBACK`    | No       | `true`/`false`; enables pytesseract pipeline.                      |
 | `LOG_LEVEL`              | No       | `INFO`, `DEBUG`, etc.; defaults to `INFO`.                         |
@@ -94,8 +96,10 @@ OUTPUT_BASE=/data/sessions
 AI_PROVIDER_URL=https://api.openai.com/v1
 AI_API_KEY=sk-REPLACE_ME
 AI_MODEL=gpt-4-turbo
-AI_TIMEOUT_SECONDS=60
-MAX_CONCURRENT_JOBS=1
+AI_TIMEOUT_SECONDS=120
+STRUCTURED_OUTPUT=true
+VALIDATION_RETRY=1
+TRIM_TEXT_FIELDS=true
 PDF_TEXT_EXTRACTOR=pdfminer
 ENABLE_OCR_FALLBACK=false
 

@@ -1,0 +1,53 @@
+{
+  "overall": {
+    "points_earned": 14,
+    "points_possible": 20
+  },
+  "criteria": [
+    {
+      "id": "A",
+      "score": 3,
+      "evidence": {
+        "quote": "Despite this, one possible determination of CWD may be that it evolved from a preexisting disease. One such possibility that researchers know of is called transmissible spongiform encephalopathy... Due to the disease’s relatedness in transmission, effects, and symptoms, it is the most likely origin of chronic wasting disease through the evolution of the virus."
+      },
+      "explanation": "Thesis clearly links CWD to TSE evolution, focusing on similarities; effectively addresses origin prompt.",
+      "advice": "Strengthen originality by exploring alternative theories or implications for wildlife management."
+    },
+    {
+      "id": "B",
+      "score": 3,
+      "evidence": {
+        "quote": "TSE is a disease transmitted in the same or similar ways when compared to CWD. These diseases can be transmitted in three ways: through bodily fluids, contaminated environmental factors... Alongside the many ways that TSE could have been transmitted to cervid populations, the way it affects sheep and goat species makes it clear..."
+      },
+      "explanation": "Clear paragraph structure on transmission, effects, symptoms; logical progression with basic transitions.",
+      "advice": "Improve transitions between sections for smoother flow; ensure conclusion ties back explicitly to intro."
+    },
+    {
+      "id": "C",
+      "score": 3,
+      "evidence": {
+        "quote": "Both diseases have been diagnosed as misfolded proteins in the brain (Merck). These proteins are known as prions... An example of how this may work is infected livestock leaving waste behind in a pasture and deer passing through that pasture and being exposed (U.S. Geological Survey)."
+      },
+      "explanation": "Uses credible sources like USGS and Merck to support claims on transmission and prions adequately.",
+      "advice": "Integrate more specific data or statistics from sources to bolster examples and depth."
+    },
+    {
+      "id": "D",
+      "score": 3,
+      "evidence": {
+        "quote": "Having the same cause between differing diseases can create similarities between how symptoms of a disease act (Emerging). Symptoms that are commonly held between TSE and chronic wasting disease include behavioral changes, excessive drooling, weight loss..."
+      },
+      "explanation": "Solidly interprets prion similarities and symptoms; engages material appropriately without deep innovation.",
+      "advice": "Add critical evaluation of evidence limitations or counterarguments for deeper insight."
+    },
+    {
+      "id": "E",
+      "score": 2,
+      "evidence": {
+        "quote": "This abnormal folding of proteins causes the cells to cease being broken down and to instead collect in the brain (Merck). This leads to neurological damage and eventual death by eliminating brain cells (Emerging). Prions are resistant to heat, cold, and chemicals which makes them difficult to eliminate..."
+      },
+      "explanation": "Readable prose with some clarity issues from awkward phrasing and formatting errors like split words.",
+      "advice": "Proofread for spacing errors and refine sentence variety; eliminate distractions from mechanics."
+    }
+  ]
+}

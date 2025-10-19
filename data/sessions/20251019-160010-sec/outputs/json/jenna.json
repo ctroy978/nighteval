@@ -1,0 +1,53 @@
+{
+  "overall": {
+    "points_earned": 14,
+    "points_possible": 20
+  },
+  "criteria": [
+    {
+      "id": "A",
+      "score": 3,
+      "evidence": {
+        "quote": "Gorbachev allowed for the Berlin wall to be taken down because he sought a greater purpose for the Soviet Union made possible by a socialist system with a more innovative approach."
+      },
+      "explanation": "Thesis is clear and focused, effectively addressing Gorbachev's role in the Wall's fall.",
+      "advice": "Enhance originality by incorporating unique perspectives on historical events."
+    },
+    {
+      "id": "B",
+      "score": 3,
+      "evidence": {
+        "quote": "The main reasons for this are that he wanted a more dynamic socialist system, there was a need for internal economic recovery, and he desired to reposition the soviet union as a cooperative global power."
+      },
+      "explanation": "Clear structure with logical progression from background to reasons and conclusion.",
+      "advice": "Strengthen transitions between paragraphs for better coherence."
+    },
+    {
+      "id": "C",
+      "score": 3,
+      "evidence": {
+        "quote": "By 1985, the time that Gorbachev took office, the soviet economy had been stagnant for 20 years. The country’s gross national product dropped from 5.8% in 1940 to 2.6% in 1970 (“Consequences of”)."
+      },
+      "explanation": "Adequate historical data and citations support main points on reforms.",
+      "advice": "Integrate evidence more deeply with explanatory analysis."
+    },
+    {
+      "id": "D",
+      "score": 3,
+      "evidence": {
+        "quote": "Gorbachev’s non-intervention, rooted in the Sinatra Doctrine, allowed East German protests to escalate. The Wall fell on November 9, 1989..."
+      },
+      "explanation": "Solid interpretation linking policies to the Wall's fall and protests.",
+      "advice": "Deepen analysis with evaluation of long-term global impacts."
+    },
+    {
+      "id": "E",
+      "score": 2,
+      "evidence": {
+        "quote": "The western part of the country went to the United States, Great Britain and France, while the eastern part went to the Soviet Union (“Berlin Wall”)."
+      },
+      "explanation": "Noticeable spacing errors and inconsistencies affect readability.",
+      "advice": "Proofread thoroughly for formatting, spelling, and capitalization issues."
+    }
+  ]
+}

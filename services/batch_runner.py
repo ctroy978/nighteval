@@ -14,7 +14,28 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 from zipfile import ZIP_DEFLATED, ZipFile
 
+from pydantic import ValidationError
+
+from models import RubricModel
+
 from utils import ai_client, io_utils, pdf_tools, validation
+
+
+def _bool_env(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _int_env(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
 
 
 @dataclass
@@ -27,6 +48,9 @@ class JobState:
     processed: int = 0
     succeeded: int = 0
     failed: int = 0
+    validated: int = 0
+    schema_fail: int = 0
+    retries_used: int = 0
     status: str = "running"
     started_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     finished_at: Optional[str] = None
@@ -45,6 +69,9 @@ class JobState:
                 "processed": self.processed,
                 "succeeded": self.succeeded,
                 "failed": self.failed,
+                "validated": self.validated,
+                "schema_fail": self.schema_fail,
+                "retries_used": self.retries_used,
                 "artifacts": self.artifacts.copy(),
                 "started_at": self.started_at,
                 "finished_at": self.finished_at,
@@ -114,15 +141,21 @@ def _run_job(
     essays_dir = inputs_dir / "essays"
     outputs_dir = state.job_dir / "outputs"
     outputs_json_dir = outputs_dir / "json"
+    outputs_failed_dir = outputs_dir / "json_failed"
     logs_dir = state.job_dir / "logs"
 
     essays_dir.mkdir(parents=True, exist_ok=True)
     outputs_json_dir.mkdir(parents=True, exist_ok=True)
+    outputs_failed_dir.mkdir(parents=True, exist_ok=True)
     logs_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        rubric = io_utils.read_json_file(str(rubric_path))
+        rubric_payload = io_utils.read_json_file(str(rubric_path))
+        rubric_model = validation.parse_rubric(rubric_payload)
         shutil.copy2(rubric_path, inputs_dir / "rubric.json")
+    except ValidationError as exc:
+        _finalise_state(state, "failed", error=f"Invalid rubric: {exc}")
+        return
     except Exception as exc:  # pragma: no cover - IO edge cases
         _finalise_state(state, "failed", error=str(exc))
         return
@@ -130,9 +163,15 @@ def _run_job(
     copied_paths = _copy_essays(pdf_paths, essays_dir)
     _write_state_snapshot(state)
 
-    summary_builder = _SummaryBuilder(rubric)
+    summary_builder = _SummaryBuilder(rubric_model)
     job_log_path = logs_dir / "job.log"
     results_log_path = logs_dir / "results.jsonl"
+
+    structured_output = _bool_env("STRUCTURED_OUTPUT", True)
+    validation_retry = max(_int_env("VALIDATION_RETRY", 1), 0)
+    if not structured_output:
+        validation_retry = 0
+    trim_text_fields = _bool_env("TRIM_TEXT_FIELDS", True)
 
     with job_log_path.open("a", encoding="utf-8") as job_log, results_log_path.open(
         "a", encoding="utf-8"
@@ -145,37 +184,82 @@ def _run_job(
             payload: Optional[Dict[str, Any]] = None
             raw_response: Optional[str] = None
             usage: Optional[Dict[str, Any]] = None
+            validation_status = "not_run"
+            schema_errors: List[str] = []
+            retries_used = 0
 
             try:
                 essay_text = pdf_tools.extract_text(str(essay_path))
-                response = ai_client.evaluate_essay(essay_text=essay_text, rubric=rubric)
-                attempts = response.attempts
-                raw_response = response.raw_text
-                usage = response.usage
-                payload = response.content
-                validation.validate_evaluation_payload(payload, rubric)
-                _write_student_json(outputs_json_dir, student_name, payload)
-                summary_builder.add_success(student_name, payload)
+                result = ai_client.evaluate_essay(
+                    essay_text=essay_text,
+                    rubric=rubric_model,
+                    validation_retry=validation_retry,
+                    trim_text_fields=trim_text_fields,
+                )
+                attempts = result.attempts
+                raw_response = result.raw_text
+                usage = result.usage
+                validation_status = result.status
+                schema_errors = result.schema_errors
+                retries_used = max(attempts - 1, 0)
+
+                if result.status in {"ok", "retry_ok"} and result.payload is not None:
+                    payload = result.payload
+                    _write_student_json(outputs_json_dir, student_name, payload)
+                    summary_builder.add_success(student_name, payload)
+                elif result.status == "schema_fail":
+                    status = "schema_fail"
+                    error = "; ".join(schema_errors) if schema_errors else "Schema validation failed"
+                    summary_builder.add_failure(student_name)
+                    _write_failure_json(
+                        outputs_failed_dir,
+                        student_name,
+                        error,
+                        raw_response,
+                        schema_errors,
+                    )
+                else:
+                    status = "failed"
+                    error = "Evaluation failed"
+                    validation_status = "error"
+                    summary_builder.add_failure(student_name)
+                    _write_failure_json(
+                        outputs_failed_dir,
+                        student_name,
+                        error,
+                        raw_response,
+                        schema_errors,
+                    )
             except (FileNotFoundError, pdf_tools.PDFExtractionError) as exc:
                 status = "failed"
                 error = str(exc)
+                validation_status = "error"
                 summary_builder.add_failure(student_name)
-                _write_failure_json(outputs_json_dir, student_name, error)
+                _write_failure_json(outputs_failed_dir, student_name, error)
             except ai_client.AIClientError as exc:
                 status = "failed"
                 error = str(exc)
+                validation_status = "error"
                 summary_builder.add_failure(student_name)
-                _write_failure_json(outputs_json_dir, student_name, error, raw_response)
-            except validation.EvaluationValidationError as exc:
-                status = "invalid"
-                error = str(exc)
-                summary_builder.add_failure(student_name)
-                _write_failure_json(outputs_json_dir, student_name, error, raw_response)
+                _write_failure_json(
+                    outputs_failed_dir,
+                    student_name,
+                    error,
+                    raw_response,
+                    schema_errors,
+                )
             except Exception as exc:  # pragma: no cover - defensive
                 status = "failed"
                 error = str(exc)
+                validation_status = "error"
                 summary_builder.add_failure(student_name)
-                _write_failure_json(outputs_json_dir, student_name, error, raw_response)
+                _write_failure_json(
+                    outputs_failed_dir,
+                    student_name,
+                    error,
+                    raw_response,
+                    schema_errors,
+                )
 
             duration_ms = int((time.perf_counter() - start_time) * 1000)
             retries = max(attempts - 1, 0)
@@ -190,10 +274,13 @@ def _run_job(
                 payload,
                 usage,
                 raw_response,
+                validation_status,
+                schema_errors,
+                retries,
                 essay_source=str(source_folder / f"{student_name}.pdf"),
             )
 
-            _update_counters(state, status)
+            _update_counters(state, status, validation_status, retries)
             _write_state_snapshot(state)
 
     try:
@@ -227,6 +314,9 @@ def _append_results_log(
     payload: Optional[Dict[str, Any]],
     usage: Optional[Dict[str, Any]],
     raw_response: Optional[str],
+    validation_status: str,
+    schema_errors: List[str],
+    retries_used: int,
     essay_source: str,
 ) -> None:
     entry = {
@@ -237,6 +327,9 @@ def _append_results_log(
         "attempts": attempts,
         "error": error,
         "essay_source": essay_source,
+        "validation_status": validation_status,
+        "schema_errors": schema_errors,
+        "retries_used": retries_used,
     }
     if usage:
         entry["usage"] = usage
@@ -255,13 +348,20 @@ def _write_state_snapshot(state: JobState) -> None:
     io_utils.write_json(state_path, snapshot)
 
 
-def _update_counters(state: JobState, status: str) -> None:
+def _update_counters(
+    state: JobState, status: str, validation_status: str, retries: int
+) -> None:
     with state.lock:
         state.processed += 1
+        state.retries_used += max(retries, 0)
         if status == "success":
             state.succeeded += 1
         else:
             state.failed += 1
+        if validation_status in {"ok", "retry_ok"}:
+            state.validated += 1
+        elif validation_status == "schema_fail":
+            state.schema_fail += 1
 
 
 def _finalise_state(state: JobState, status: str, error: Optional[str] = None) -> None:
@@ -282,11 +382,14 @@ def _write_failure_json(
     student_name: str,
     error: str,
     raw_response: Optional[str] = None,
+    schema_errors: Optional[List[str]] = None,
 ) -> None:
     target_path = outputs_dir / f"{student_name}.json"
     failure_payload = {"status": "error", "error": error}
     if raw_response:
         failure_payload["raw_response"] = raw_response
+    if schema_errors:
+        failure_payload["schema_errors"] = schema_errors
     io_utils.write_json(target_path, failure_payload)
 
 
@@ -340,15 +443,10 @@ def _slugify(name: Optional[str]) -> Optional[str]:
 class _SummaryBuilder:
     """Accumulates rows for the summary CSV."""
 
-    def __init__(self, rubric: Dict[str, Any]) -> None:
-        criteria = rubric.get("criteria", []) if isinstance(rubric, dict) else []
-        self.criteria_order: List[str] = [str(item.get("id")) for item in criteria if item.get("id")]
-        self.max_scores = {
-            str(item.get("id")): float(item.get("max_score", 0))
-            for item in criteria
-            if item.get("id") is not None
-        }
-        self.overall_possible = sum(self.max_scores.values())
+    def __init__(self, rubric: RubricModel) -> None:
+        self.criteria_order: List[str] = [criterion.id for criterion in rubric.criteria]
+        self.max_scores = {criterion.id: float(criterion.max_score) for criterion in rubric.criteria}
+        self.overall_possible = float(rubric.points_possible)
         self.headers: List[str] = [
             "student_name",
             "overall_points_earned",

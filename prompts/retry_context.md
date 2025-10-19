@@ -1,1 +1,4 @@
-Your previous response was not valid JSON. Return only JSON that matches the requested schema, without commentary or explanations.
+Your previous response could not be processed because of these schema errors:
+{{ errors }}
+
+Return corrected JSON only. Do not include commentary, Markdown, or explanations.

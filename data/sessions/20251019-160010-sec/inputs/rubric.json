@@ -1,0 +1,60 @@
+{
+  "overall_points_possible": 20,
+  "criteria": [
+    {
+      "id": "A",
+      "name": "Thesis and Argument",
+      "max_score": 4,
+      "descriptors": {
+        "4": "Thesis is clear, insightful, and guides the essay with a strong, original argument.",
+        "3": "Thesis is clear and focused; argument addresses the prompt effectively.",
+        "2": "Thesis exists but is vague, unfocused, or only partly addresses the prompt.",
+        "1": "No clear thesis or argument is absent/irrelevant/underdeveloped."
+      }
+    },
+    {
+      "id": "B",
+      "name": "Organization and Coherence",
+      "max_score": 4,
+      "descriptors": {
+        "4": "Exceptionally well-organized; seamless transitions; coherent progression of ideas.",
+        "3": "Clear structure with effective transitions; logical flow overall.",
+        "2": "Basic structure present; some sections disjointed or weak transitions.",
+        "1": "Lacks logical structure; ideas jump abruptly without connections."
+      }
+    },
+    {
+      "id": "C",
+      "name": "Development and Support",
+      "max_score": 4,
+      "descriptors": {
+        "4": "Rich, relevant evidence from credible sources; smoothly integrated to support claims.",
+        "3": "Adequate evidence and examples that support main points.",
+        "2": "Some support, but limited/underdeveloped or weakly integrated.",
+        "1": "Little/no relevant evidence; claims largely unsubstantiated."
+      }
+    },
+    {
+      "id": "D",
+      "name": "Critical Analysis and Understanding",
+      "max_score": 4,
+      "descriptors": {
+        "4": "Sophisticated analysis; original insights; deep engagement with material.",
+        "3": "Solid analysis with clear interpretation and appropriate engagement.",
+        "2": "Basic analysis present but lacks depth or critical insight.",
+        "1": "Minimal/no analysis; superficial or mistaken understanding."
+      }
+    },
+    {
+      "id": "E",
+      "name": "Language, Style, and Mechanics",
+      "max_score": 4,
+      "descriptors": {
+        "4": "Polished, precise language; varied sentences; essentially error-free.",
+        "3": "Clear, effective prose; minor errors that don’t distract.",
+        "2": "Readable but noticeable errors that affect clarity.",
+        "1": "Frequent errors that hinder comprehension."
+      }
+    }
+  ]
+}
