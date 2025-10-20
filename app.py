@@ -9,10 +9,12 @@ from typing import Any, Dict, List, Literal, Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, File, Form, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
+from services import EmailConfigError, EmailDeliveryService
 from services.batch_runner import JobManager
 from services.rubric_manager import RubricManager, RubricExtractResponse
 
@@ -90,6 +92,52 @@ class RubricSaveResponse(BaseModel):
     warnings: List[str] = Field(default_factory=list)
     canonical_path: Optional[str]
     version_hash: Optional[str]
+
+
+class EmailPreviewStudent(BaseModel):
+    student_name: str
+    email: str
+    section: Optional[str]
+    status: str
+    reason: Optional[str] = None
+    subject: Optional[str] = None
+    body: Optional[str] = None
+    attachments: List[str] = Field(default_factory=list)
+    evaluation_found: bool
+
+
+class EmailPreviewResponse(BaseModel):
+    job_id: str
+    job_name: Optional[str]
+    dry_run: bool = True
+    students: List[EmailPreviewStudent]
+    unmatched_evaluations: List[str] = Field(default_factory=list)
+
+
+class EmailSendRequest(BaseModel):
+    dry_run: bool = Field(False, description="Set to false to execute the send operation.")
+
+
+class EmailSendResult(BaseModel):
+    student_name: str
+    email: str
+    status: str
+    attachments: str
+    reason: Optional[str] = None
+    attempts: int
+    timestamp: str
+
+
+class EmailSendResponse(BaseModel):
+    job_id: str
+    job_name: Optional[str]
+    dry_run: bool = False
+    report_path: str
+    total: int
+    sent: int
+    failed: int
+    results: List[EmailSendResult]
+    unmatched_evaluations: List[str] = Field(default_factory=list)
 
 
 @app.post("/jobs", response_model=JobResponse)
@@ -182,6 +230,75 @@ async def batch_summary_pdf(job_id: str):  # type: ignore[override]
         raise HTTPException(status_code=404, detail="Batch PDF missing on disk")
 
     return FileResponse(path, media_type="application/pdf", filename=path.name)
+
+
+@app.post("/jobs/{job_id}/email/preview", response_model=EmailPreviewResponse)
+async def email_preview(job_id: str) -> EmailPreviewResponse:
+    job_dir, snapshot = _resolve_job_context(job_id)
+
+    try:
+        service = EmailDeliveryService(job_id=job_id, job_dir=job_dir, snapshot=snapshot)
+        preparation = await run_in_threadpool(service.prepare)
+    except EmailConfigError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    students = [
+        EmailPreviewStudent(
+            student_name=item.student.student_name,
+            email=item.student.email,
+            section=item.student.section,
+            status=item.status,
+            reason=item.reason,
+            subject=item.subject,
+            body=item.body,
+            attachments=item.attachment_labels(),
+            evaluation_found=item.evaluation_found,
+        )
+        for item in preparation.prepared
+    ]
+
+    return EmailPreviewResponse(
+        job_id=job_id,
+        job_name=service.job_name,
+        dry_run=True,
+        students=students,
+        unmatched_evaluations=preparation.unmatched_evaluations,
+    )
+
+
+@app.post("/jobs/{job_id}/email/send", response_model=EmailSendResponse)
+async def email_send(job_id: str, request: EmailSendRequest) -> EmailSendResponse:
+    if request.dry_run:
+        raise HTTPException(
+            status_code=400,
+            detail="Set 'dry_run' to false to send emails or use the preview endpoint.",
+        )
+
+    job_dir, snapshot = _resolve_job_context(job_id)
+
+    try:
+        service = EmailDeliveryService(job_id=job_id, job_dir=job_dir, snapshot=snapshot)
+        preparation = await run_in_threadpool(service.prepare)
+    except EmailConfigError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    rows = await run_in_threadpool(service.send, preparation.prepared)
+    report_path = await run_in_threadpool(service.write_report, rows)
+    sent_count = sum(1 for row in rows if row["status"] == "sent")
+    failed_count = sum(1 for row in rows if row["status"] != "sent")
+    results = [EmailSendResult(**row) for row in rows]
+
+    return EmailSendResponse(
+        job_id=job_id,
+        job_name=service.job_name,
+        dry_run=False,
+        report_path=str(report_path),
+        total=len(rows),
+        sent=sent_count,
+        failed=failed_count,
+        results=results,
+        unmatched_evaluations=preparation.unmatched_evaluations,
+    )
 
 
 @app.post("/rubrics/extract", response_model=RubricExtractResponseModel)
@@ -285,6 +402,33 @@ async def rubric_save(temp_id: str, request: Request, validate_only: bool = Fals
         canonical_path=str(session.canonical_path) if session.canonical_path else None,
         version_hash=session.version_hash,
     )
+
+
+def _resolve_job_context(job_id: str) -> tuple[Path, Dict[str, Any]]:
+    state = job_manager.get_job(job_id)
+    if state:
+        snapshot = state.snapshot()
+        job_dir = state.job_dir
+    else:
+        snapshot = _load_snapshot_from_disk(job_id)
+        if snapshot is None:
+            raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+        job_dir = _resolve_output_base() / job_id
+
+    if not job_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Job directory missing for '{job_id}'")
+
+    status = (snapshot.get("status") or "").lower()
+    if status in {"running", "pending"}:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job '{job_id}' is not ready for email delivery (status: {status})",
+        )
+
+    if snapshot.get("validated", 0) <= 0:
+        raise HTTPException(status_code=400, detail="No validated evaluations available for email")
+
+    return job_dir, snapshot
 
 
 def _load_snapshot_from_disk(job_id: str) -> Optional[Dict[str, Any]]:

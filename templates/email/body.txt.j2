@@ -1,0 +1,12 @@
+Hi {{ student_name }},
+
+Attached is your evaluation for {{ job_name }}.
+Overall: {{ eval.overall.points_earned }} / {{ eval.overall.points_possible }}.
+
+Quick advice:
+{% for c in eval.criteria -%}
+- {{ c.name if c.name is defined else c.id }}: {{ c.advice }}
+{% endfor %}
+
+Best,
+{{ from_name }}
