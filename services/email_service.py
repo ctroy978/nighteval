@@ -5,15 +5,17 @@ from __future__ import annotations
 import csv
 import json
 import os
+import re
 import smtplib
 import ssl
 import time
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from email.message import EmailMessage
 from email.utils import formataddr
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from jinja2 import Environment, FileSystemLoader, TemplateError
 
@@ -22,6 +24,8 @@ try:  # Optional dependency: YAML metadata support
 except ImportError:  # pragma: no cover - YAML support is optional
     yaml = None
 
+
+_EMAIL_RE = re.compile(r"^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$", re.IGNORECASE)
 
 class EmailServiceError(RuntimeError):
     """Base error for email-related failures."""
@@ -54,6 +58,16 @@ class AttachmentConfig:
     attach_pdf: bool = True
     attach_json: bool = False
 
+    def intended_labels(self) -> List[str]:
+        labels: List[str] = []
+        if self.attach_txt:
+            labels.append("txt")
+        if self.attach_pdf:
+            labels.append("pdf")
+        if self.attach_json:
+            labels.append("json")
+        return labels
+
 
 @dataclass(slots=True)
 class StudentRecord:
@@ -62,7 +76,12 @@ class StudentRecord:
     student_name: str
     email: str
     section: Optional[str]
+    extras: Dict[str, Any]
     key: str
+    raw_email: str
+    email_status: str
+    email_reason: Optional[str]
+    row_number: int
 
 
 @dataclass(slots=True)
@@ -97,9 +116,15 @@ class PreparedEmail:
     status: str
     reason: Optional[str] = None
     evaluation_name: Optional[str] = None
+    intended_attachments: List[str] = field(default_factory=list)
+    overall: Optional[Dict[str, Any]] = None
+    extras: Dict[str, Any] = field(default_factory=dict)
 
     def attachment_labels(self) -> List[str]:
         return [item.label for item in self.attachments]
+
+    def intended_labels(self) -> List[str]:
+        return list(self.intended_attachments)
 
 
 @dataclass(slots=True)
@@ -108,6 +133,8 @@ class PreparationResult:
 
     prepared: List[PreparedEmail]
     unmatched_evaluations: List[str] = field(default_factory=list)
+    total_students: int = 0
+    attachment_config: AttachmentConfig = field(default_factory=AttachmentConfig)
 
 
 class EmailTemplateRenderer:
@@ -166,14 +193,95 @@ class EmailDeliveryService:
         self.attachment_config = self._load_attachment_config()
         self._students: Optional[List[StudentRecord]] = None
         self._evaluations: Optional[Dict[str, EvaluationRecord]] = None
+        self._evaluation_duplicates: set[str] = set()
 
-    def prepare(self) -> PreparationResult:
+    def prepare(
+        self, attachment_overrides: Optional[Dict[str, bool]] = None
+    ) -> PreparationResult:
         students = self._load_students()
         evaluations = self._load_evaluations()
+        config = self._resolve_attachment_config(attachment_overrides)
         prepared: List[PreparedEmail] = []
 
+        duplicate_student_map = _find_duplicate_keys(students)
+
         for student in students:
+            duplicates = duplicate_student_map.get(student.key, [])
             record = evaluations.get(student.key)
+            evaluation_duplicate = student.key in self._evaluation_duplicates
+
+            if student.email_status == "invalid_email":
+                prepared.append(
+                    PreparedEmail(
+                        student=student,
+                        subject=None,
+                        body=None,
+                        attachments=[],
+                        intended_attachments=config.intended_labels(),
+                        evaluation_found=bool(record),
+                        status="invalid_email",
+                        reason=student.email_reason,
+                        evaluation_name=record.student_name if record else None,
+                        overall=record.payload.get("overall") if record else None,
+                        extras=student.extras,
+                    )
+                )
+                continue
+
+            if student.email_status == "ambiguous_email":
+                prepared.append(
+                    PreparedEmail(
+                        student=student,
+                        subject=None,
+                        body=None,
+                        attachments=[],
+                        intended_attachments=config.intended_labels(),
+                        evaluation_found=bool(record),
+                        status="ambiguous_email",
+                        reason=student.email_reason,
+                        evaluation_name=record.student_name if record else None,
+                        overall=record.payload.get("overall") if record else None,
+                        extras=student.extras,
+                    )
+                )
+                continue
+
+            if duplicates:
+                prepared.append(
+                    PreparedEmail(
+                        student=student,
+                        subject=None,
+                        body=None,
+                        attachments=[],
+                        intended_attachments=config.intended_labels(),
+                        evaluation_found=bool(record),
+                        status="ambiguous_match",
+                        reason="Name appears multiple times in roster",
+                        evaluation_name=record.student_name if record else None,
+                        overall=record.payload.get("overall") if record else None,
+                        extras=student.extras,
+                    )
+                )
+                continue
+
+            if evaluation_duplicate:
+                prepared.append(
+                    PreparedEmail(
+                        student=student,
+                        subject=None,
+                        body=None,
+                        attachments=[],
+                        intended_attachments=config.intended_labels(),
+                        evaluation_found=True,
+                        status="ambiguous_match",
+                        reason="Multiple validated evaluations share this name",
+                        evaluation_name=record.student_name if record else None,
+                        overall=record.payload.get("overall"),
+                        extras=student.extras,
+                    )
+                )
+                continue
+
             if not record:
                 prepared.append(
                     PreparedEmail(
@@ -181,9 +289,11 @@ class EmailDeliveryService:
                         subject=None,
                         body=None,
                         attachments=[],
+                        intended_attachments=config.intended_labels(),
                         evaluation_found=False,
                         status="missing_eval",
                         reason="Validated evaluation not found",
+                        extras=student.extras,
                     )
                 )
                 continue
@@ -199,15 +309,18 @@ class EmailDeliveryService:
                         subject=None,
                         body=None,
                         attachments=[],
+                        intended_attachments=config.intended_labels(),
                         evaluation_found=True,
                         status="template_error",
                         reason=str(exc),
                         evaluation_name=record.student_name,
+                        overall=record.payload.get("overall"),
+                        extras=student.extras,
                     )
                 )
                 continue
 
-            attachment_result = self._collect_attachments(record)
+            attachment_result = self._collect_attachments(record, config)
             if attachment_result["missing"]:
                 missing_labels = ", ".join(sorted(attachment_result["missing"]))
                 prepared.append(
@@ -216,10 +329,13 @@ class EmailDeliveryService:
                         subject=subject,
                         body=body,
                         attachments=attachment_result["attachments"],
+                        intended_attachments=attachment_result["intended"],
                         evaluation_found=True,
                         status="missing_attachment",
                         reason=f"Required attachment(s) missing: {missing_labels}",
                         evaluation_name=record.student_name,
+                        overall=record.payload.get("overall"),
+                        extras=student.extras,
                     )
                 )
                 continue
@@ -230,9 +346,12 @@ class EmailDeliveryService:
                     subject=subject,
                     body=body,
                     attachments=attachment_result["attachments"],
+                    intended_attachments=attachment_result["intended"],
                     evaluation_found=True,
                     status="ready",
                     evaluation_name=record.student_name,
+                    overall=record.payload.get("overall"),
+                    extras=student.extras,
                 )
             )
 
@@ -242,7 +361,30 @@ class EmailDeliveryService:
             if key not in {student.key for student in students}
         ]
         unmatched.sort(key=str.casefold)
-        return PreparationResult(prepared=prepared, unmatched_evaluations=unmatched)
+        return PreparationResult(
+            prepared=prepared,
+            unmatched_evaluations=unmatched,
+            total_students=len(students),
+            attachment_config=config,
+        )
+
+    @staticmethod
+    def summarize_prepared(prepared: Sequence[PreparedEmail]) -> Dict[str, int]:
+        status_counts = Counter(item.status for item in prepared)
+        matched = sum(1 for item in prepared if item.evaluation_found)
+        total = len(prepared)
+        return {
+            "total": total,
+            "matched": matched,
+            "unmatched": max(total - matched, 0),
+            "ready": status_counts.get("ready", 0),
+            "missing_eval": status_counts.get("missing_eval", 0),
+            "missing_attachment": status_counts.get("missing_attachment", 0),
+            "template_error": status_counts.get("template_error", 0),
+            "invalid_email": status_counts.get("invalid_email", 0),
+            "ambiguous_match": status_counts.get("ambiguous_match", 0),
+            "ambiguous_email": status_counts.get("ambiguous_email", 0),
+        }
 
     def send(self, prepared: Sequence[PreparedEmail]) -> List[Dict[str, Any]]:
         """Send prepared emails and return rows suitable for CSV reporting."""
@@ -435,18 +577,38 @@ class EmailDeliveryService:
             if not name_field or not email_field:
                 raise EmailConfigError("students.csv must include 'student_name' and 'email' columns")
 
-            for row in reader:
+            for index, row in enumerate(reader, start=2):
                 student_name = (row.get(name_field) or "").strip()
-                email = (row.get(email_field) or "").strip()
+                raw_email = (row.get(email_field) or "").strip()
                 section = (row.get(section_field) or "").strip() if section_field else None
-                if not student_name or not email:
+                if not student_name or not raw_email:
                     continue
+
+                extras = {}
+                for header, value in row.items():
+                    if header is None:
+                        continue
+                    header_key = header.strip()
+                    if header_key in {name_field, email_field}:
+                        continue
+                    if section_field and header_key == section_field:
+                        continue
+                    extras[header_key] = value.strip() if isinstance(value, str) else value
+
+                email, email_status, email_reason = _parse_email_cell(raw_email)
+                normalized_section = section if section else None
+                student_key = _normalize_name(student_name)
                 records.append(
                     StudentRecord(
                         student_name=student_name,
                         email=email,
-                        section=section if section else None,
-                        key=_normalize_name(student_name),
+                        section=normalized_section,
+                        extras=extras,
+                        key=student_key,
+                        raw_email=raw_email,
+                        email_status=email_status,
+                        email_reason=email_reason,
+                        row_number=index,
                     )
                 )
 
@@ -476,6 +638,7 @@ class EmailDeliveryService:
             raise EmailConfigError("Validated evaluations directory not found")
 
         evaluations: Dict[str, EvaluationRecord] = {}
+        self._evaluation_duplicates = set()
         for json_path in sorted(json_dir.glob("*.json")):
             try:
                 with json_path.open("r", encoding="utf-8") as handle:
@@ -488,6 +651,9 @@ class EmailDeliveryService:
                 continue
             student_name = json_path.stem
             key = _normalize_name(student_name)
+            if key in evaluations:
+                self._evaluation_duplicates.add(key)
+                continue
             attachments = {
                 "json": json_path,
                 "txt": json_path.parent.parent / "print" / f"{student_name}.txt",
@@ -519,12 +685,44 @@ class EmailDeliveryService:
         for key, value in self.metadata.items():
             context.setdefault(key, value)
 
+        if student.section is not None:
+            context.setdefault("section", student.section)
+        for key, value in student.extras.items():
+            context.setdefault(key, value)
+
         return context
 
-    def _collect_attachments(self, record: EvaluationRecord) -> Dict[str, Any]:
+    def _resolve_attachment_config(
+        self, overrides: Optional[Dict[str, bool]]
+    ) -> AttachmentConfig:
+        if not overrides:
+            return AttachmentConfig(
+                attach_txt=self.attachment_config.attach_txt,
+                attach_pdf=self.attachment_config.attach_pdf,
+                attach_json=self.attachment_config.attach_json,
+            )
+
+        config = AttachmentConfig(
+            attach_txt=self.attachment_config.attach_txt,
+            attach_pdf=self.attachment_config.attach_pdf,
+            attach_json=self.attachment_config.attach_json,
+        )
+        for key, value in overrides.items():
+            if value is None:
+                continue
+            if key == "attach_txt":
+                config.attach_txt = bool(value)
+            elif key == "attach_pdf":
+                config.attach_pdf = bool(value)
+            elif key == "attach_json":
+                config.attach_json = bool(value)
+        return config
+
+    def _collect_attachments(
+        self, record: EvaluationRecord, config: AttachmentConfig
+    ) -> Dict[str, Any]:
         attachments: List[AttachmentDescriptor] = []
         missing: List[str] = []
-        config = self.attachment_config
 
         if config.attach_txt:
             txt_path = record.attachments.get("txt")
@@ -568,7 +766,11 @@ class EmailDeliveryService:
             else:
                 missing.append("json")
 
-        return {"attachments": attachments, "missing": missing}
+        return {
+            "attachments": attachments,
+            "missing": missing,
+            "intended": config.intended_labels(),
+        }
 
     def _build_email_message(self, item: PreparedEmail) -> EmailMessage:
         assert item.subject is not None and item.body is not None
@@ -614,6 +816,52 @@ class EmailDeliveryService:
             time.sleep(sleep_for)
 
 
+def _parse_email_cell(value: str) -> Tuple[str, str, Optional[str]]:
+    normalized = (value or "").strip()
+    if not normalized:
+        return "", "invalid_email", "Email address is required"
+
+    parts = [part.strip() for part in re.split(r"[;,]", normalized) if part.strip()]
+    ambiguous = False
+    if parts:
+        email_candidate = parts[0]
+        if len(parts) > 1:
+            ambiguous = True
+    else:
+        email_candidate = normalized
+
+    if " " in email_candidate:
+        # Handle space separated addresses
+        pieces = [piece for piece in email_candidate.split() if piece.strip()]
+        if pieces:
+            email_candidate = pieces[0].strip()
+            if len(pieces) > 1:
+                ambiguous = True
+
+    status = "ok"
+    reason: Optional[str] = None
+    if ambiguous:
+        status = "ambiguous_email"
+        reason = "Multiple emails provided; using the first entry"
+
+    if not _EMAIL_RE.fullmatch(email_candidate):
+        status = "invalid_email"
+        reason = "Invalid email format"
+
+    return email_candidate, status, reason
+
+
+def _find_duplicate_keys(students: Sequence[StudentRecord]) -> Dict[str, List[StudentRecord]]:
+    buckets: Dict[str, List[StudentRecord]] = defaultdict(list)
+    duplicates: Dict[str, List[StudentRecord]] = {}
+    for record in students:
+        buckets[record.key].append(record)
+    for key, bucket in buckets.items():
+        if len(bucket) > 1:
+            duplicates[key] = bucket
+    return duplicates
+
+
 def _normalize_name(value: str) -> str:
     collapsed = " ".join(value.split())
     return collapsed.casefold()
@@ -657,4 +905,3 @@ def _int_value(value: Any, default: int) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
-

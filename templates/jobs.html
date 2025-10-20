@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Batch Jobs</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; color: #1f2933; background: #f7f7f7; }
+    h1 { margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    th, td { padding: 12px; border-bottom: 1px solid #e1e7ef; text-align: left; }
+    th { background: #eef2f7; font-weight: 600; }
+    tr:hover td { background: #f3f8ff; }
+    .muted { color: #607087; font-size: 0.9rem; }
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.85rem; color: #fff; background: #4a90e2; }
+    .tag.running { background: #f0ad4e; }
+    .tag.failed { background: #d64545; }
+    .tag.completed { background: #57a773; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .btn { display: inline-block; padding: 6px 12px; border-radius: 4px; border: 1px solid #3a6fb0; background: #4f83d1; color: #fff; text-decoration: none; font-size: 0.9rem; }
+    .btn:hover { background: #3a6fb0; }
+    .btn-muted { border-color: #a0aec0; background: #cbd5e1; color: #5f6b7a; pointer-events: none; }
+    .empty { padding: 32px; background: #fff; text-align: center; border: 1px solid #e1e7ef; border-radius: 6px; }
+    footer { margin-top: 24px; font-size: 0.85rem; color: #6c7a8c; }
+  </style>
+</head>
+<body>
+  <h1>Recent Batch Jobs</h1>
+  {% if jobs %}
+  <table>
+    <thead>
+      <tr>
+        <th>Job</th>
+        <th>Status</th>
+        <th>Validated</th>
+        <th>Success / Fail</th>
+        <th>Started</th>
+        <th>Finished</th>
+        <th>Artifacts</th>
+        <th>Email</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for job in jobs %}
+        {% set job_id = job.get('job_id') %}
+        {% set job_name = job.get('job_name') or job_id %}
+        {% set status = (job.get('status') or 'unknown').lower() %}
+        {% set validated = job.get('validated', 0) %}
+        {% set total = job.get('total', 0) %}
+        {% set succeeded = job.get('succeeded', 0) %}
+        {% set failed = job.get('failed', 0) %}
+        {% set started = job.get('started_at') %}
+        {% set finished = job.get('finished_at') %}
+        {% set artifacts = job.get('artifacts', {}) or {} %}
+        {% set email_ready = status == 'completed' and validated > 0 %}
+        <tr>
+          <td>
+            <div><strong>{{ job_name }}</strong></div>
+            <div class="muted">ID: {{ job_id }}</div>
+          </td>
+          <td>
+            <span class="tag {{ status }}">{{ status }}</span>
+          </td>
+          <td>{{ validated }} / {{ total }}</td>
+          <td>{{ succeeded }} / {{ failed }}</td>
+          <td>{{ started or '—' }}</td>
+          <td>{{ finished or '—' }}</td>
+          <td class="actions">
+            {% if artifacts.get('csv') %}
+              <a class="btn" href="/jobs/{{ job_id }}/download/csv">CSV</a>
+            {% endif %}
+            {% if artifacts.get('zip') %}
+              <a class="btn" href="/jobs/{{ job_id }}/download/zip">ZIP</a>
+            {% endif %}
+            {% if artifacts.get('pdf_batch') %}
+              <a class="btn" href="/jobs/{{ job_id }}/batch.pdf">Batch PDF</a>
+            {% endif %}
+            {% if artifacts.get('email_report') %}
+              <a class="btn" href="/jobs/{{ job_id }}/email/report">Email Report</a>
+            {% endif %}
+          </td>
+          <td>
+            {% if email_ready %}
+              <a class="btn" href="/jobs/{{ job_id }}/email">Open Console</a>
+            {% else %}
+              <span class="btn btn-muted">Unavailable</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">No jobs found yet. Create one with <code>POST /jobs</code>.</div>
+  {% endif %}
+  <footer>
+    Need the API state? <code>GET /jobs/&lt;job_id&gt;</code> returns the JSON snapshot for any run.
+  </footer>
+</body>
+</html>

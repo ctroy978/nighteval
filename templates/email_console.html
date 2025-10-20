@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Email Console – {{ snapshot.get('job_name') or job_id }}</title>
+  <style>
+    :root {
+      color-scheme: light;
+    }
+    body { font-family: Arial, sans-serif; margin: 24px; background: #f6f7fb; color: #1f2933; }
+    h1, h2, h3 { color: #1d3557; }
+    a { color: #3366bb; }
+    .breadcrumbs { margin-bottom: 16px; font-size: 0.95rem; }
+    .card { background: #fff; border: 1px solid #dde3ed; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 2px rgba(15,23,42,0.08); }
+    .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-top: 12px; }
+    .metric { background: #f1f5fb; border-radius: 6px; padding: 12px; }
+    .metric strong { display: block; font-size: 1.2rem; }
+    .alert { padding: 12px; border-radius: 6px; margin-bottom: 12px; }
+    .alert.error { background: #fdecea; color: #c53030; border: 1px solid #f5c2c0; }
+    .alert.info { background: #e8f3ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+    form { display: flex; gap: 12px; align-items: center; }
+    input[type="file"] { font-size: 0.95rem; }
+    button { padding: 8px 16px; border-radius: 6px; border: none; font-size: 0.95rem; cursor: pointer; background: #2563eb; color: #fff; }
+    button[disabled] { background: #cbd5e1; color: #64748b; cursor: not-allowed; }
+    label { font-weight: 600; }
+    .toggle-group { display: flex; gap: 12px; flex-wrap: wrap; margin: 12px 0; }
+    .toggle { display: flex; align-items: center; gap: 6px; background: #f1f5fb; padding: 6px 10px; border-radius: 6px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; background: #fff; }
+    th, td { border: 1px solid #e2e8f0; padding: 8px; font-size: 0.9rem; }
+    th { background: #eef2f7; text-align: left; }
+    tbody tr:nth-child(odd) { background: #f8fbff; }
+    pre { background: #0f172a; color: #f1f5f9; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 0.9rem; }
+    .summary-counters { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
+    .summary-counters span { background: #f1f5fb; border-radius: 6px; padding: 6px 10px; font-size: 0.9rem; }
+    .flex-between { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+    .section-title { margin-bottom: 8px; }
+    .btn-link { display: inline-block; padding: 6px 12px; border-radius: 4px; border: 1px solid #3a6fb0; background: #4f83d1; color: #fff; text-decoration: none; font-size: 0.9rem; }
+    .btn-link.disabled { border-color: #a0aec0; background: #cbd5e1; color: #64748b; pointer-events: none; }
+    #send-status { margin-top: 12px; font-weight: 600; }
+    .small { font-size: 0.85rem; color: #5f6b7a; }
+    .samples { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  </style>
+</head>
+<body>
+  <div class="breadcrumbs"><a href="/jobs">&larr; Back to Jobs</a></div>
+  <h1>Email Console</h1>
+  <div class="card">
+    <div class="flex-between">
+      <div>
+        <h2>{{ snapshot.get('job_name') or job_id }}</h2>
+        <div class="small">Job ID: {{ job_id }}</div>
+        <div class="small">Status: {{ snapshot.get('status') or 'unknown' }}</div>
+      </div>
+      <div class="grid">
+        <div class="metric">
+          <span class="small">Validated</span>
+          <strong>{{ snapshot.get('validated', 0) }}</strong>
+        </div>
+        <div class="metric">
+          <span class="small">Total Essays</span>
+          <strong>{{ snapshot.get('total', 0) }}</strong>
+        </div>
+        <div class="metric">
+          <span class="small">Succeeded</span>
+          <strong>{{ snapshot.get('succeeded', 0) }}</strong>
+        </div>
+        <div class="metric">
+          <span class="small">Failed</span>
+          <strong>{{ snapshot.get('failed', 0) }}</strong>
+        </div>
+      </div>
+    </div>
+    {% if console_error %}
+      <div class="alert error">{{ console_error }}</div>
+    {% endif %}
+    {% if service_error %}
+      <div class="alert error">{{ service_error }}</div>
+    {% endif %}
+    {% if not csv_exists %}
+      <div class="alert info">Upload <code>students.csv</code> to enable preview and send.</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2 class="section-title">A. Upload students.csv</h2>
+    {% if upload_message %}
+      <div class="alert info">Roster uploaded successfully.</div>
+    {% endif %}
+    {% if upload_error %}
+      <div class="alert error">{{ upload_error }}</div>
+    {% endif %}
+    <form method="post" action="/jobs/{{ job_id }}/email/upload_csv" enctype="multipart/form-data">
+      <input type="file" name="students_csv" accept=".csv" required>
+      <button type="submit">Upload CSV</button>
+      {% if csv_exists %}
+        <span class="small">Current file: <code>students.csv</code>{% if csv_modified %} (updated {{ csv_modified }}){% endif %}</span>
+      {% else %}
+        <span class="small">Required columns: <code>student_name</code>, <code>email</code></span>
+      {% endif %}
+    </form>
+  </div>
+
+  <div class="card" id="preview-card">
+    <div class="flex-between">
+      <h2 class="section-title">B. Preview (Dry Run)</h2>
+      <div class="toggle-group">
+        <label class="toggle"><input type="checkbox" id="attach-txt" {% if attachment_defaults.get('attach_txt') %}checked{% endif %}> TXT</label>
+        <label class="toggle"><input type="checkbox" id="attach-pdf" {% if attachment_defaults.get('attach_pdf') %}checked{% endif %}> PDF</label>
+        <label class="toggle"><input type="checkbox" id="attach-json" {% if attachment_defaults.get('attach_json') %}checked{% endif %}> JSON</label>
+      </div>
+    </div>
+    <button id="preview-btn" {% if service_error or not csv_exists %}disabled{% endif %}>Preview Emails</button>
+    <div id="preview-error" class="alert error" style="display:none;"></div>
+    <div class="summary-counters" id="preview-summary"></div>
+    <div class="small" id="unmatched-container" style="display:none;"></div>
+    <div class="samples" id="sample-output"></div>
+    <table id="preview-table" style="display:none;">
+      <thead>
+        <tr>
+          <th>Student</th>
+          <th>Email</th>
+          <th>Status</th>
+          <th>Reason</th>
+          <th>Attachments</th>
+          <th>Overall</th>
+        </tr>
+      </thead>
+      <tbody id="preview-body"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2 class="section-title">C. Send Emails</h2>
+    {% set send_disabled = (service_error or not csv_exists or snapshot.get('status') != 'completed' or snapshot.get('validated', 0) <= 0) %}
+    <div class="small">Confirm everything looks right, then send through Brevo.</div>
+    {% if snapshot.get('status') != 'completed' %}
+      <div class="alert info">Job is still {{ snapshot.get('status') }}. Wait for completion before sending.</div>
+    {% endif %}
+    {% if snapshot.get('validated', 0) <= 0 %}
+      <div class="alert info">No validated evaluations available yet.</div>
+    {% endif %}
+    <label><input type="checkbox" id="confirm-send"> I'm ready to send these emails</label>
+    <div class="small">Send rate is limited to your Brevo quota ({{ snapshot.get('validated', 0) }} total).</div>
+    <button id="send-btn" data-base-disabled="{{ 'true' if send_disabled else 'false' }}" {% if send_disabled %}disabled{% endif %}>Send Emails</button>
+    <div id="send-status"></div>
+    <div id="report-link" class="small" style="margin-top:8px;">
+      {% if report_exists %}
+        Latest report: <a href="/jobs/{{ job_id }}/email/report">email_report.csv</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <script>
+    const jobId = {{ job_id|tojson }};
+    const previewBtn = document.getElementById('preview-btn');
+    const previewSummary = document.getElementById('preview-summary');
+    const previewError = document.getElementById('preview-error');
+    const previewTable = document.getElementById('preview-table');
+    const previewBody = document.getElementById('preview-body');
+    const sampleOutput = document.getElementById('sample-output');
+    const unmatchedContainer = document.getElementById('unmatched-container');
+    const attachTxt = document.getElementById('attach-txt');
+    const attachPdf = document.getElementById('attach-pdf');
+    const attachJson = document.getElementById('attach-json');
+    const sendBtn = document.getElementById('send-btn');
+    const confirmSend = document.getElementById('confirm-send');
+    const sendStatus = document.getElementById('send-status');
+    const reportLink = document.getElementById('report-link');
+
+    const previewUrl = '/jobs/' + jobId + '/email/preview';
+    const sendUrl = '/jobs/' + jobId + '/email/send';
+
+    function collectOptions() {
+      return {
+        attach_txt: attachTxt ? attachTxt.checked : undefined,
+        attach_pdf: attachPdf ? attachPdf.checked : undefined,
+        attach_json: attachJson ? attachJson.checked : undefined,
+      };
+    }
+
+    function formatSummary(data) {
+      previewSummary.innerHTML = '';
+      const entries = [
+        ['Ready', data.ready_to_send],
+        ['Matched', data.matched],
+        ['Unmatched', data.unmatched],
+        ['Missing Eval', data.skipped_no_eval],
+        ['No Match', data.skipped_no_match],
+        ['Invalid Email', data.invalid_email],
+        ['Missing Attachment', data.missing_attachment],
+        ['Template Errors', data.failed_template],
+        ['Ambiguous Email', data.ambiguous_email],
+      ];
+      entries.forEach(([label, value]) => {
+        const span = document.createElement('span');
+        span.textContent = label + ': ' + value;
+        previewSummary.appendChild(span);
+      });
+    }
+
+    function renderTable(items) {
+      if (!items.length) {
+        previewTable.style.display = 'none';
+        previewBody.innerHTML = '';
+        return;
+      }
+      previewBody.innerHTML = '';
+      items.forEach(item => {
+        const row = document.createElement('tr');
+        const overall = (item.overall_points_earned !== null && item.overall_points_possible !== null)
+          ? item.overall_points_earned + ' / ' + item.overall_points_possible
+          : '—';
+        const cells = [
+          item.student_name,
+          item.email,
+          item.match_status,
+          item.reason || '—',
+          (item.intended_attachments || []).join(', ') || '—',
+          overall,
+        ];
+        cells.forEach(text => {
+          const td = document.createElement('td');
+          td.textContent = text;
+          row.appendChild(td);
+        });
+        previewBody.appendChild(row);
+      });
+      previewTable.style.display = '';
+    }
+
+    function renderSamples(samples) {
+      sampleOutput.innerHTML = '';
+      if (!samples || !samples.length) {
+        return;
+      }
+      samples.forEach(sample => {
+        const block = document.createElement('div');
+        block.innerHTML = '<strong>' + sample.student_name + '</strong><br><div class="small">Subject: ' + sample.subject + '</div>';
+        const body = document.createElement('pre');
+        body.textContent = sample.body;
+        block.appendChild(body);
+        sampleOutput.appendChild(block);
+      });
+    }
+
+    function renderUnmatched(list) {
+      if (list && list.length) {
+        unmatchedContainer.style.display = '';
+        unmatchedContainer.textContent = 'Evaluations without a matching student: ' + list.join(', ');
+      } else {
+        unmatchedContainer.style.display = 'none';
+        unmatchedContainer.textContent = '';
+      }
+    }
+
+    async function runPreview() {
+      if (!previewBtn || previewBtn.disabled) {
+        return;
+      }
+      previewError.style.display = 'none';
+      previewError.textContent = '';
+      previewSummary.innerHTML = 'Running preview…';
+      previewBody.innerHTML = '';
+      previewTable.style.display = 'none';
+      sampleOutput.innerHTML = '';
+      unmatchedContainer.style.display = 'none';
+
+      try {
+        const response = await fetch(previewUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(collectOptions()),
+        });
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          const detail = error.detail || ('Preview failed (HTTP ' + response.status + ')');
+          previewSummary.innerHTML = '';
+          previewError.textContent = detail;
+          previewError.style.display = '';
+          return;
+        }
+        const data = await response.json();
+        formatSummary(data);
+        renderTable(data.items || []);
+        renderSamples(data.samples || []);
+        renderUnmatched(data.unmatched_evaluations || []);
+      } catch (err) {
+        previewSummary.innerHTML = '';
+        previewError.textContent = 'Preview error: ' + err;
+        previewError.style.display = '';
+      }
+    }
+
+    async function runSend() {
+      if (!sendBtn || sendBtn.disabled) {
+        return;
+      }
+      if (!confirmSend.checked) {
+        sendStatus.textContent = 'Please confirm that you are ready to send.';
+        sendStatus.style.color = '#c53030';
+        return;
+      }
+      sendBtn.disabled = true;
+      sendStatus.style.color = '#1d4ed8';
+      sendStatus.textContent = 'Sending emails…';
+      try {
+        const payload = collectOptions();
+        payload.dry_run = false;
+        const response = await fetch(sendUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          const detail = error.detail || ('Send failed (HTTP ' + response.status + ')');
+          sendStatus.textContent = detail;
+          sendStatus.style.color = '#c53030';
+        } else {
+          const data = await response.json();
+          const sent = data.sent || 0;
+          const failed = data.failed || 0;
+          sendStatus.textContent = `Emails sent: ${sent}; failed: ${failed}`;
+          sendStatus.style.color = '#15803d';
+          if (data.status_counts) {
+            const parts = [];
+            Object.entries(data.status_counts).forEach(([key, value]) => {
+              parts.push(key + ': ' + value);
+            });
+            sendStatus.textContent += ' (' + parts.join(', ') + ')';
+          }
+          if (reportLink) {
+            reportLink.innerHTML = 'Latest report: <a href="/jobs/' + jobId + '/email/report">email_report.csv</a>';
+          }
+        }
+      } catch (err) {
+        sendStatus.textContent = 'Send error: ' + err;
+        sendStatus.style.color = '#c53030';
+      } finally {
+        const baseDisabled = sendBtn.dataset.baseDisabled === 'true';
+        sendBtn.disabled = baseDisabled || !confirmSend.checked;
+      }
+    }
+
+    if (previewBtn) {
+      previewBtn.addEventListener('click', function (event) {
+        event.preventDefault();
+        runPreview();
+      });
+    }
+
+    if (confirmSend && sendBtn) {
+      const baseDisabled = sendBtn.dataset.baseDisabled === 'true';
+      function updateSendButton() {
+        sendBtn.disabled = baseDisabled || !confirmSend.checked;
+      }
+      confirmSend.addEventListener('change', updateSendButton);
+      updateSendButton();
+    }
+
+    if (sendBtn) {
+      sendBtn.addEventListener('click', function (event) {
+        event.preventDefault();
+        runSend();
+      });
+    }
+  </script>
+</body>
+</html>

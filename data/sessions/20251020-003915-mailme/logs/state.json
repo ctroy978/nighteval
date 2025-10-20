@@ -1,0 +1,25 @@
+{
+  "job_id": "20251020-003915-mailme",
+  "job_name": "mailme",
+  "status": "completed",
+  "total": 4,
+  "processed": 4,
+  "succeeded": 3,
+  "failed": 1,
+  "validated": 3,
+  "schema_fail": 0,
+  "retries_used": 0,
+  "text_ok_count": 3,
+  "low_text_warning_count": 0,
+  "low_text_rejected_count": 1,
+  "rubric_version_hash": "508846220f8e909f5f62227b17f196f1b6691a2cdbea786b470883bde36a3c1a",
+  "artifacts": {
+    "csv": "data/sessions/20251020-003915-mailme/outputs/summary.csv",
+    "zip": "data/sessions/20251020-003915-mailme/outputs/evaluations.zip",
+    "email_report": "data/sessions/20251020-003915-mailme/outputs/email_report.csv"
+  },
+  "started_at": "2025-10-20T00:39:15.435983",
+  "finished_at": "2025-10-20T00:39:30.667064",
+  "pdf_count": 3,
+  "pdf_batch_path": null
+}
