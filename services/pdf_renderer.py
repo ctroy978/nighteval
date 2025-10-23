@@ -123,15 +123,23 @@ class PDFSummaryRenderer:
         student_name = str(context.get("student_name", ""))
         job_name = str(context.get("job_name", ""))
         generated_at = str(context.get("generated_at", ""))
-        overall = context.get("eval", {})
-        overall_points = ""
-        if isinstance(overall, Mapping):
-            overall_section = overall.get("overall")
+        evaluation = context.get("eval", {})
+        overall_score = ""
+        numeric_breakdown = ""
+        summary_text = ""
+        if isinstance(evaluation, Mapping):
+            raw_overall_score = evaluation.get("overall_score")
+            if raw_overall_score is not None:
+                overall_score = html.escape(str(raw_overall_score))
+            summary_value = evaluation.get("summary")
+            if isinstance(summary_value, str):
+                summary_text = summary_value
+            overall_section = evaluation.get("overall")
             if isinstance(overall_section, Mapping):
                 earned = overall_section.get("points_earned")
                 possible = overall_section.get("points_possible")
                 if earned is not None and possible is not None:
-                    overall_points = f"{earned} / {possible}"
+                    numeric_breakdown = f"{earned} / {possible}"
         criteria_rows = context.get("criteria_rows", [])
         flags = context.get("flags", {})
         story: List[object] = []
@@ -151,9 +159,17 @@ class PDFSummaryRenderer:
         story.append(Spacer(1, 0.2 * inch))
 
         story.append(Paragraph("Overall Score", self._subheader_style))
-        score_display = html.escape(overall_points) if overall_points else "—"
+        score_display = overall_score or "—"
+        if numeric_breakdown:
+            score_display = f"{score_display} ({html.escape(numeric_breakdown)})" if score_display != "—" else html.escape(numeric_breakdown)
         story.append(Paragraph(score_display, self._body_style))
         story.append(Spacer(1, 0.15 * inch))
+
+        if summary_text:
+            story.append(Paragraph("Summary", self._subheader_style))
+            summary_lines = html.escape(summary_text).replace("\n", " <br/> ")
+            story.append(Paragraph(summary_lines, self._body_style))
+            story.append(Spacer(1, 0.15 * inch))
 
         if isinstance(criteria_rows, Sequence) and criteria_rows:
             story.append(Paragraph("Criteria", self._subheader_style))
@@ -164,24 +180,57 @@ class PDFSummaryRenderer:
                 criterion_id = html.escape(str(entry.get("id", "")))
                 name = html.escape(str(entry.get("name", "")))
                 score = html.escape(str(entry.get("score", "")))
+                assigned_level = html.escape(str(entry.get("assigned_level", "")))
+                description = html.escape(str(entry.get("description", "")))
+
                 header_bits = [bit for bit in [criterion_id, name] if bit]
                 header_text = " — ".join(header_bits)
                 if score:
                     header_text = f"{header_text} (Score: {score})" if header_text else f"Score: {score}"
                 story.append(Paragraph(f"<b>{header_text}</b>", self._body_style))
 
-                for label, key in (
-                    ("Evidence", "evidence"),
-                    ("Explanation", "explanation"),
-                    ("Advice", "advice"),
-                ):
-                    value = entry.get(key)
-                    if not value:
-                        continue
-                    text = html.escape(str(value)).replace("\n", "<br/>")
+                if assigned_level:
                     story.append(
                         Paragraph(
-                            f"<b>{label}:</b> {text}",
+                            f"<b>Assigned Level:</b> {assigned_level}",
+                            self._body_style,
+                        )
+                    )
+                if description:
+                    story.append(
+                        Paragraph(
+                            f"<b>Description:</b> {description}",
+                            self._body_style,
+                        )
+                    )
+
+                examples = entry.get("examples", [])
+                if isinstance(examples, Sequence) and examples:
+                    for idx, example in enumerate(examples, start=1):
+                        if not isinstance(example, Mapping):
+                            continue
+                        excerpt = html.escape(str(example.get("excerpt", ""))).replace("\n", "<br/>")
+                        comment = html.escape(str(example.get("comment", ""))).replace("\n", "<br/>")
+                        story.append(
+                            Paragraph(
+                                f"<b>Example {idx} excerpt:</b> {excerpt}",
+                                self._body_style,
+                            )
+                        )
+                        if comment:
+                            story.append(
+                                Paragraph(
+                                    f"<b>Example {idx} comment:</b> {comment}",
+                                    self._body_style,
+                                )
+                            )
+
+                suggestion = entry.get("improvement_suggestion")
+                if suggestion:
+                    suggestion_html = html.escape(str(suggestion)).replace("\n", "<br/>")
+                    story.append(
+                        Paragraph(
+                            f"<b>Improvement Suggestion:</b> {suggestion_html}",
                             self._body_style,
                         )
                     )

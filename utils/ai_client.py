@@ -16,16 +16,29 @@ from . import prompts, validation
 
 
 PROMPT_SCHEMA_SAMPLE = {
-    "overall": {"points_earned": 0, "points_possible": 0},
+    "overall_score": "14/20",
+    "summary": "Concise overview of strengths and areas to improve.",
     "criteria": [
         {
-            "id": "STRING",
-            "score": 0,
-            "evidence": {"quote": "Selected lines from the essay"},
-            "explanation": "≤25 words",
-            "advice": "≤25 words",
+            "id": "criterion_id",
+            "criterion": "Criterion display name",
+            "description": "Short description drawn from the rubric.",
+            "assigned_level": "Proficient (3)",
+            "score": "3",
+            "examples": [
+                {
+                    "excerpt": "Quoted sentence or phrase from the essay",
+                    "comment": "1-2 sentence explanation of how this excerpt matches the assigned level",
+                },
+                {
+                    "excerpt": "Second supporting or problem excerpt",
+                    "comment": "1-2 sentence explanation",
+                },
+            ],
+            "improvement_suggestion": "Specific revision advice with a rewritten example that would reach the top rubric level.",
         }
     ],
+    "overall": {"points_earned": 0, "points_possible": 0},
 }
 
 RUBRIC_RESPONSE_SCHEMA = {
@@ -39,13 +52,27 @@ RUBRIC_RESPONSE_SCHEMA = {
                 "properties": {
                     "id": {"type": "string"},
                     "name": {"type": "string"},
-                    "max_score": {"type": "number"},
+                    "description": {"type": "string"},
+                    "max_score": {"type": ["number", "null"]},
+                    "levels": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "description": {"type": "string"},
+                                "score": {"type": ["number", "string", "null"]},
+                            },
+                            "required": ["name", "description"],
+                            "additionalProperties": True,
+                        },
+                    },
                     "descriptors": {
                         "type": "object",
                         "additionalProperties": {"type": "string"},
                     },
                 },
-                "required": ["id", "max_score"],
+                "required": ["id"],
                 "additionalProperties": True,
             },
         },
@@ -131,8 +158,16 @@ def evaluate_essay(
         except Exception as exc:  # pragma: no cover - network errors
             raise AIClientError(str(exc)) from exc
 
-        last_raw = completion["content"]
+        last_raw = completion.get("content") or completion.get("tool_calls_raw", "")
         usage = completion["usage"]
+        if completion.get("tool_call_used") and not completion.get("content"):
+            schema_errors = [
+                "Model returned a function_call/tool response; reply with plain JSON matching the schema.",
+            ]
+            if attempts >= max_attempts:
+                break
+            messages.append(_retry_message(schema_errors))
+            continue
 
         try:
             payload = json.loads(last_raw)
@@ -259,10 +294,30 @@ def _run_completion(messages: List[Dict[str, str]], schema: Dict[str, Any]) -> D
 
     message = completion.choices[0].message
     content = message.content or ""
+    tool_calls_data: Optional[str] = None
+    tool_call_used = False
+    tool_calls = getattr(message, "tool_calls", None)
+    if tool_calls:
+        tool_call_used = True
+        try:
+            serialized = []
+            for call in tool_calls:
+                if hasattr(call, "model_dump"):
+                    serialized.append(call.model_dump())
+                else:
+                    serialized.append(str(call))
+            tool_calls_data = json.dumps(serialized, ensure_ascii=False)
+        except Exception:  # pragma: no cover - defensive serialisation
+            tool_calls_data = str(tool_calls)
     usage: Optional[Dict[str, Any]] = None
     if completion.usage:
         usage = _usage_to_dict(completion.usage)
-    return {"content": content, "usage": usage}
+    return {
+        "content": content,
+        "usage": usage,
+        "tool_call_used": tool_call_used,
+        "tool_calls_raw": tool_calls_data,
+    }
 
 
 def _retry_message(errors: List[str]) -> Dict[str, str]:

@@ -8,17 +8,25 @@
 
 ## Overall
 
-- Score: {{ eval.overall.points_earned }} / {{ eval.overall.points_possible }}
+- Score: {{ eval.overall_score }}{% if eval.overall is not none %} ({{ eval.overall.points_earned }} / {{ eval.overall.points_possible }}){% endif %}
+- Summary: {{ wrap_lines(eval.summary, width=80)|join(' ') }}
 
 ## Criteria
 
-| ID | Score | Evidence | Explanation | Advice |
-| -- | ----- | -------- | ----------- | ------ |
 {% for row in criteria_rows -%}
-{% set evidence_lines = wrap_lines(row.evidence, width=60, max_lines=3) %}
-{% set explanation_lines = wrap_lines(row.explanation, width=30) %}
-{% set advice_lines = wrap_lines(row.advice, width=30) %}
-| {{ row.id }} | {{ row.score }} | {{ evidence_lines|join('<br>') }} | {{ explanation_lines|join('<br>') }} | {{ advice_lines|join('<br>') }} |
+### {{ row.id }} — {{ row.name }}
+
+- **Assigned Level:** {{ row.assigned_level }}
+- **Score:** {{ row.score }}
+- **Description:** {{ wrap_lines(row.description, width=80)|join(' ') }}
+- **Examples:**
+{% for example in row.examples -%}
+  - *Excerpt:* {{ wrap_lines(example.excerpt, width=80, max_lines=3)|join(' ') }}
+    
+    *Comment:* {{ wrap_lines(example.comment, width=80)|join(' ') }}
+{% endfor %}
+- **Improvement Suggestion:** {{ wrap_lines(row.improvement_suggestion, width=80)|join(' ') }}
+
 {% endfor %}
 
 {% if flags -%}

@@ -1,0 +1,24 @@
+{
+  "job_id": "20251023-015953-second",
+  "job_name": "second",
+  "status": "completed",
+  "total": 4,
+  "processed": 4,
+  "succeeded": 3,
+  "failed": 1,
+  "validated": 3,
+  "schema_fail": 0,
+  "retries_used": 0,
+  "text_ok_count": 3,
+  "low_text_warning_count": 0,
+  "low_text_rejected_count": 1,
+  "rubric_version_hash": "79cd6abe7b5d7fbeab3178248a6383ea8e50603a97fd58417a0150cb65d8e78a",
+  "artifacts": {
+    "csv": "data/sessions/20251023-015953-second/outputs/summary.csv",
+    "zip": "data/sessions/20251023-015953-second/outputs/evaluations.zip"
+  },
+  "started_at": "2025-10-23T01:59:53.138811",
+  "finished_at": "2025-10-23T02:00:30.664536",
+  "pdf_count": 3,
+  "pdf_batch_path": null
+}

@@ -30,13 +30,6 @@ def _sanitize_text(value: str) -> str:
     return _CONTROL_CHARS.sub("", value)
 
 
-def _limit_words(text: str, limit: int) -> str:
-    words = [word for word in text.split() if word]
-    if len(words) <= limit:
-        return " ".join(words)
-    return " ".join(words[:limit])
-
-
 def _ensure_lines(lines: List[str]) -> List[str]:
     return lines if lines else [""]
 
@@ -219,27 +212,29 @@ class SummaryRenderer:
         for entry in criteria:
             if not isinstance(entry, dict):
                 continue
-            evidence = ""
-            evidence_obj = entry.get("evidence")
-            if isinstance(evidence_obj, dict):
-                evidence = str(evidence_obj.get("quote", ""))
-            explanation = _limit_words(str(entry.get("explanation", "")), 25)
-            advice = _limit_words(str(entry.get("advice", "")), 25)
+            examples: List[Dict[str, str]] = []
+            examples_raw = entry.get("examples", []) if isinstance(entry.get("examples"), list) else []
+            if isinstance(examples_raw, list):
+                for example in examples_raw:
+                    if not isinstance(example, dict):
+                        continue
+                    excerpt = _sanitize_text(str(example.get("excerpt", "")))
+                    comment = _sanitize_text(str(example.get("comment", "")))
+                    examples.append({"excerpt": excerpt, "comment": comment})
 
-            evidence_lines = [line.strip() for line in evidence.splitlines() if line.strip()]
-            if len(evidence_lines) > 3:
-                evidence_lines = evidence_lines[:3]
-            evidence = "\n".join(evidence_lines)
-
+            score_value = entry.get("score")
             row = {
                 "id": str(entry.get("id", "")),
-                "score": entry.get("score", ""),
                 "name": _sanitize_text(
-                    self._criterion_names.get(str(entry.get("id", "")), "")
+                    str(entry.get("criterion") or self._criterion_names.get(str(entry.get("id", "")), ""))
                 ),
-                "evidence": evidence,
-                "explanation": explanation,
-                "advice": advice,
+                "score": _sanitize_text(str(score_value)) if score_value is not None else "",
+                "assigned_level": _sanitize_text(str(entry.get("assigned_level", ""))),
+                "description": _sanitize_text(str(entry.get("description", ""))),
+                "examples": examples,
+                "improvement_suggestion": _sanitize_text(
+                    str(entry.get("improvement_suggestion", ""))
+                ),
             }
             rows.append(row)
         return rows

@@ -1,0 +1,100 @@
+{
+  "overall_score": "14/20",
+  "summary": "The essay demonstrates a solid understanding of the historical context and effectively uses evidence to support its main points, with a clear structure that guides the reader through the argument. However, it could benefit from deeper critical analysis to provide original insights and from polishing language and mechanics to eliminate noticeable errors that occasionally disrupt clarity. Overall, focusing on more insightful interpretation and error-free prose would elevate the work to a higher level.",
+  "criteria": [
+    {
+      "id": "thesis_argument",
+      "criterion": "Thesis and Argument",
+      "description": "Evaluates the clarity, insight, and guidance provided by the thesis and the strength of the overall argument.",
+      "assigned_level": "Thesis is clear and focused, with a solid argument that adequately addresses the prompt.",
+      "score": "3",
+      "examples": [
+        {
+          "excerpt": "Gorbachev allowed for the Berlin wall to be taken down because he sought a greater purpose for the Soviet Union made possible by a socialist system with a more innovative approach.",
+          "comment": "This excerpt presents a clear thesis that outlines the main reasons for Gorbachev's decision, focusing on his vision for reform, which adequately addresses the implied prompt without lacking relevance."
+        },
+        {
+          "excerpt": "In conclusion, the Soviet leader allowed the Berlin wall to come down because he had a broader vision for the Soviet Union and its role in the world.",
+          "comment": "The concluding restatement reinforces the thesis effectively, maintaining focus on the key arguments, though it could be more insightful to reach higher levels."
+        }
+      ],
+      "improvement_suggestion": "To achieve the top level of a clear, insightful thesis that guides the essay with a strong, original argument, refine your thesis to include a unique perspective, such as how Gorbachev's reforms not only enabled the Wall's fall but also inadvertently accelerated the Soviet Union's own dissolution. For example, revise to: 'Gorbachev's allowance of the Berlin Wall's fall stemmed from his visionary reforms, which, while aiming to revitalize socialism, paradoxically sowed the seeds for the Eastern Bloc's unraveling.' This change earns the top level by introducing originality and deeper insight, ensuring the thesis actively shapes a compelling, unified essay."
+    },
+    {
+      "id": "organization_coherence",
+      "criterion": "Organization and Coherence",
+      "description": "Assesses the structure, transitions, and logical flow of ideas throughout the essay.",
+      "assigned_level": "Clear structure with effective transitions; ideas flow logically overall.",
+      "score": "3",
+      "examples": [
+        {
+          "excerpt": "Gorbachev allowed for the Berlin wall to be taken down because he sought a greater purpose for the Soviet Union made possible by a socialist system with a more innovative approach. Perestroika was Gorbachev’s policy introduced in 1985...",
+          "comment": "This transition from the thesis to the first body paragraph on Perestroika maintains logical progression, effectively linking the broader argument to specific evidence."
+        },
+        {
+          "excerpt": "However, these reforms placed other considerations on the economy for Mikhail Gorbachev. The Soviet leader’s recognition of the Union’s dire need for internal economic recovery shifted concern away from the Berlin Wall.",
+          "comment": "The use of 'However' here signals a shift to the next reason, supporting overall coherence by connecting economic priorities to the Wall's fate, though some sections could flow more seamlessly."
+        }
+      ],
+      "improvement_suggestion": "Aim for the highest level by creating an exceptionally well-organized essay with seamless transitions and coherent progression, such as using varied transitional phrases that explicitly tie evidence back to the thesis. For instance, instead of 'However, these reforms placed other considerations...,' revise to: 'Building on perestroika's domestic focus, Gorbachev's recognition of the Union's dire economic needs further diverted attention from maintaining the Wall, prioritizing recovery over repression.' This revision earns top marks by enhancing seamlessness and ensuring every section advances the argument fluidly, fostering a cohesive narrative."
+    },
+    {
+      "id": "development_support",
+      "criterion": "Development and Support",
+      "description": "Examines the use of evidence, examples, and integration to support the main points.",
+      "assigned_level": "Adequate evidence and examples that effectively support main points.",
+      "score": "3",
+      "examples": [
+        {
+          "excerpt": "Perestroika was Gorbachev’s policy introduced in 1985 to reform the Soviet Union’s stagnant economy and political system. Gorbachev’s perestroika program loosened centralized control of many businesses... (“Perestroika”).",
+          "comment": "This excerpt provides adequate historical evidence from a cited source to support the argument on economic reform, effectively illustrating how perestroika contributed to the Wall's fall."
+        },
+        {
+          "excerpt": "The Sinatra Doctrine a policy allowing neighboring Warsaw Pact countries to resolve their internal affairs... As a result, democratic reforms were enabled across the Eastern Bloc. One of the most notable was Poland’s Solidarity movement... (“Sinatra Doctrine”).",
+          "comment": "Citing specific examples like the Solidarity movement bolsters the point on non-intervention, offering relevant support that ties directly to the escalation of East German protests."
+        }
+      ],
+      "improvement_suggestion": "To reach the top tier with rich, relevant evidence from credible sources integrated smoothly to strongly support the argument, expand citations with brief analysis of their implications and ensure seamless weaving into your prose. For example, revise the Perestroika section to: 'As detailed in historical accounts, perestroika not only loosened controls but unleashed market forces that destabilized the command economy, indirectly eroding the Wall's justification by highlighting socialism's adaptability over rigidity (\"Perestroika\"). This integration earns the highest level by transforming evidence into a powerful reinforcement of your thesis, demonstrating sophisticated use of sources."
+    },
+    {
+      "id": "critical_analysis",
+      "criterion": "Critical Analysis and Understanding",
+      "description": "Evaluates the depth of analysis, insights, and engagement with the topic.",
+      "assigned_level": "Solid analysis with clear interpretation and appropriate engagement with the topic.",
+      "score": "3",
+      "examples": [
+        {
+          "excerpt": "These policies show that Gorbachev was striving for a more dynamic socialist system because the policies he installed paved the way for East Germans to demand reforms and protest to have the Berlin Wall removed.",
+          "comment": "This sentence offers solid interpretation by linking glasnost and perestroika to the protests, showing appropriate engagement with how reforms enabled change."
+        },
+        {
+          "excerpt": "This shift reflected Gorbachev’s practical vision to modernize the Soviet Union, prioritizing economic survival over imperial control. Ultimately, that enabled the Wall’s fall on November 9, 1989.",
+          "comment": "The analysis here clearly interprets Gorbachev's priorities, connecting economic needs to non-intervention, which demonstrates engagement but lacks deeper originality."
+        }
+      ],
+      "improvement_suggestion": "Strive for sophisticated analysis with original insights and deep engagement by exploring counterarguments or broader implications, such as the ironic role of reforms in hastening communism's end. Revise the economic recovery section to: 'Gorbachev's pivot to economic survival, while pragmatic, ironically amplified the Wall's obsolescence, as perestroika's failures exposed the regime's fragility, inviting the very protests it sought to avoid.' This earns the top level through original insight that critically engages the material, revealing nuanced understanding beyond surface-level description."
+    },
+    {
+      "id": "language_style_mechanics",
+      "criterion": "Language, Style, and Mechanics",
+      "description": "Reviews the clarity, precision, variety, and error-free quality of the writing.",
+      "assigned_level": "Readable but with noticeable errors in grammar, style, or mechanics that affect clarity.",
+      "score": "2",
+      "examples": [
+        {
+          "excerpt": "The wall divided families and communities, and was inherently controlling, as its primary purpose was to restrict and regulate the movement of East Germans.",
+          "comment": "This sentence is readable and conveys the idea clearly, but minor spacing issues and repetitive phrasing slightly affect the overall polish."
+        },
+        {
+          "excerpt": "Gorbachev’ s ideology was unexpected given the historical conflict of the Soviet Union (“Mikhail Gorbachev”). Ultimately , as time went on, the Soviet leader allowed the Berlin wall to come",
+          "comment": "Noticeable errors like inconsistent capitalization ('soviet'), awkward phrasing, and incomplete sentences hinder comprehension and disrupt the flow."
+        }
+      ],
+      "improvement_suggestion": "Target polished, engaging prose with precise language, varied sentences, and no errors by proofreading for spacing, spelling, and consistency, then varying sentence structure for engagement. For example, revise the incomplete sentence to: 'Gorbachev's ideology, surprisingly progressive amid the Soviet Union's history of conflict, ultimately led him to permit the Berlin Wall's dismantling as reforms progressed.' This change achieves the top level by eliminating errors, enhancing precision and variety, and creating engaging, error-free writing that captivates the reader."
+    }
+  ],
+  "overall": {
+    "points_earned": 14,
+    "points_possible": 20
+  }
+}

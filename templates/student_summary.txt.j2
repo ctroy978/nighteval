@@ -4,21 +4,34 @@ Job: {{ job_name }}    Generated: {{ generated_at }}
 {{ COURSE_NAME }}{% if COURSE_NAME and TEACHER_NAME %} — {% endif %}{{ TEACHER_NAME }}
 {% endif %}
 
-Overall Score: {{ eval.overall.points_earned }} / {{ eval.overall.points_possible }}
+Overall Score: {{ eval.overall_score }}{% if eval.overall is not none %} ({{ eval.overall.points_earned }} / {{ eval.overall.points_possible }}){% endif %}
+
+Summary:
+{% for line in wrap_lines(eval.summary, width=SUMMARY_LINE_WIDTH) -%}
+  {{ line }}
+{% endfor %}
 
 Criteria:
 {% for row in criteria_rows -%}
-{{ row.id }}  Score: {{ row.score }}
-Evidence:
-{% for line in wrap_lines(row.evidence, width=SUMMARY_LINE_WIDTH, max_lines=3) -%}
+{{ row.id }} — {{ row.name }}
+Level: {{ row.assigned_level }}    Score: {{ row.score }}
+Description:
+{% for line in wrap_lines(row.description, width=SUMMARY_LINE_WIDTH) -%}
   {{ line }}
 {% endfor %}
-Explanation:
-{% for line in wrap_lines(row.explanation, width=SUMMARY_LINE_WIDTH) -%}
-  {{ line }}
+Examples:
+{% for example in row.examples -%}
+  Excerpt:
+  {% for line in wrap_lines(example.excerpt, width=SUMMARY_LINE_WIDTH, max_lines=3) -%}
+    {{ line }}
+  {% endfor %}
+  Comment:
+  {% for line in wrap_lines(example.comment, width=SUMMARY_LINE_WIDTH) -%}
+    {{ line }}
+  {% endfor %}
 {% endfor %}
-Advice:
-{% for line in wrap_lines(row.advice, width=SUMMARY_LINE_WIDTH) -%}
+Improvement Suggestion:
+{% for line in wrap_lines(row.improvement_suggestion, width=SUMMARY_LINE_WIDTH) -%}
   {{ line }}
 {% endfor %}
 

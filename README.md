@@ -29,7 +29,7 @@ pip install -r requirements.txt
 | `AI_TIMEOUT_SECONDS`    | Request timeout in seconds (default 120)     |
 | `STRUCTURED_OUTPUT`     | Enable Pydantic-validated JSON output (default `true`) |
 | `VALIDATION_RETRY`      | Number of schema retries per essay (default `1`) |
-| `TRIM_TEXT_FIELDS`      | Trim quotes/explanations/advice server-side (default `true`) |
+| `TRIM_TEXT_FIELDS`      | Trim excerpts, comments, and suggestions server-side (default `true`) |
 | `PRINT_SUMMARY_ENABLED` | Write Phase 4 plain-text summaries to `outputs/print/` (default `true`) |
 | `MARKDOWN_SUMMARY`      | Also render Markdown summaries to `outputs/print_md/` (default `false`) |
 | `SUMMARY_LINE_WIDTH`    | Soft wrap width for TXT summaries (default `100`) |

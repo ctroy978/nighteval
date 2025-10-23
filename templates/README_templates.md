@@ -7,7 +7,7 @@ The printable summaries use Jinja2 templates stored in this directory. Templates
 - `generated_at`: UTC timestamp in ISO format.
 - `eval`: validated evaluation dictionary (`overall`, `criteria`, etc.).
 - `rubric`: canonical rubric JSON.
-- `criteria_rows`: convenience list with `id`, `score`, `evidence`, `explanation`, and `advice` strings.
+- `criteria_rows`: convenience list with per-criterion dictionaries containing `id`, `name`, `score`, `assigned_level`, `description`, `examples` (list of `excerpt`/`comment` pairs), and `improvement_suggestion`.
 - `flags`: optional dictionary for contextual warnings (for example `low_text_warning`).
 - `COURSE_NAME` / `TEACHER_NAME`: pulled from configuration for footer text.
 - `SUMMARY_LINE_WIDTH`: configured soft wrap width.

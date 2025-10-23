@@ -1,11 +1,16 @@
 Hi {{ student_name }},
 
 Attached is your evaluation for {{ job_name }}.
-Overall: {{ eval.overall.points_earned }} / {{ eval.overall.points_possible }}.
+Overall: {{ eval.overall_score }}{% if eval.overall is not none %} ({{ eval.overall.points_earned }} / {{ eval.overall.points_possible }}){% endif %}.
+
+Summary:
+{% for line in wrap_lines(eval.summary, width=80) -%}
+{{ line }}
+{% endfor %}
 
 Quick advice:
 {% for c in eval.criteria -%}
-- {{ c.name if c.name is defined else c.id }}: {{ c.advice }}
+- {{ c.criterion if c.criterion is defined else c.id }}: {{ c.improvement_suggestion }}
 {% endfor %}
 
 Best,

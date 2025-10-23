@@ -77,7 +77,7 @@ The application reads configuration from environment variables (loaded via `.env
 | `AI_TIMEOUT_SECONDS`     | No       | HTTP timeout for AI calls (default `120`).                         |
 | `STRUCTURED_OUTPUT`      | No       | Enforce Pydantic-validated JSON responses (default `true`).        |
 | `VALIDATION_RETRY`       | No       | Additional schema retries per essay (default `1`).                 |
-| `TRIM_TEXT_FIELDS`       | No       | Trim quote/explanation/advice field lengths (default `true`).      |
+| `TRIM_TEXT_FIELDS`       | No       | Trim excerpts, comments, and suggestion text lengths (default `true`). |
 | `PDF_TEXT_EXTRACTOR`     | No       | `pypdf2`, `pdfminer`, or `mixed`; default auto-select.             |
 | `ENABLE_OCR_FALLBACK`    | No       | `true`/`false`; enables pytesseract pipeline.                      |
 | `LOG_LEVEL`              | No       | `INFO`, `DEBUG`, etc.; defaults to `INFO`.                         |

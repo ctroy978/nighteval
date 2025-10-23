@@ -103,15 +103,26 @@ def _validate_canonical(
 
     canonical = model.model_dump(mode="json")
 
-    if canonical.get("overall_points_possible") is None:
-        canonical["overall_points_possible"] = int(model.points_possible)
+    numeric_total = model.points_possible
+    if canonical.get("overall_points_possible") is None and numeric_total is not None:
+        canonical["overall_points_possible"] = numeric_total
 
-    sum_scores = sum(crit["max_score"] for crit in canonical.get("criteria", []))
-    overall = canonical.get("overall_points_possible")
-    if overall is None:
+    sum_scores = _safe_sum(canonical.get("criteria", []))
+    overall_raw = canonical.get("overall_points_possible")
+    overall_numeric = (
+        float(overall_raw) if isinstance(overall_raw, (int, float)) else None
+    )
+
+    if overall_numeric is None and sum_scores is not None:
         canonical["overall_points_possible"] = sum_scores
-        overall = sum_scores
-    if config.require_totals_equal and overall != sum_scores:
+        overall_numeric = sum_scores
+
+    if (
+        config.require_totals_equal
+        and sum_scores is not None
+        and overall_numeric is not None
+        and abs(overall_numeric - sum_scores) > 1e-6
+    ):
         message = (
             "Sum of criterion max_score values must equal overall_points_possible"
         )
@@ -236,16 +247,17 @@ def _auto_convert(
                 changed = True
 
     sum_scores = _safe_sum(criteria)
-    overall = working.get("overall_points_possible")
-    if overall is None:
-        working["overall_points_possible"] = sum_scores
-        changed = True
-    elif overall != sum_scores and not config.require_totals_equal:
-        working["overall_points_possible"] = sum_scores
-        changed = True
-        warnings.append(
-            "Adjusted overall_points_possible to match the sum of criterion max_score values"
-        )
+    overall = working.get("overall_points_possible") if isinstance(working.get("overall_points_possible"), (int, float)) else None
+    if sum_scores is not None:
+        if overall is None:
+            working["overall_points_possible"] = sum_scores
+            changed = True
+        elif abs(overall - sum_scores) > 1e-6 and not config.require_totals_equal:
+            working["overall_points_possible"] = sum_scores
+            changed = True
+            warnings.append(
+                "Adjusted overall_points_possible to match the sum of criterion max_score values"
+            )
 
     if "levels" in working:
         working.pop("levels")
@@ -305,10 +317,18 @@ def _levels_to_descriptors(levels: Any) -> Dict[str, str]:
     return descriptors
 
 
-def _safe_sum(criteria: List[Any]) -> int:
-    total = 0
+def _safe_sum(criteria: List[Any]) -> Optional[float]:
+    numeric_values: List[float] = []
     for item in criteria:
-        if isinstance(item, dict) and isinstance(item.get("max_score"), (int, float)):
-            total += int(item["max_score"])
-    return total
-
+        if not isinstance(item, dict):
+            return None
+        value = item.get("max_score")
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            numeric_values.append(float(value))
+        else:
+            return None
+    if not numeric_values:
+        return None
+    return float(sum(numeric_values))

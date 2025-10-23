@@ -1,0 +1,4 @@
+2025-10-22T02:41:32.789648 | caven | schema_fail | 17746 | 1
+2025-10-22T02:41:32.792910 | dalle | low_text_rejected | chars=120 | pages=1 | avg=120.0
+2025-10-22T02:41:45.254544 | jenna | success | 12461 | 0 | printed=true | printed_pdf=true
+2025-10-22T02:42:00.627589 | madelaine | success | 15372 | 0 | printed=true | printed_pdf=true

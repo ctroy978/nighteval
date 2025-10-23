@@ -948,8 +948,12 @@ class _SummaryBuilder:
 
     def __init__(self, rubric: RubricModel) -> None:
         self.criteria_order: List[str] = [criterion.id for criterion in rubric.criteria]
-        self.max_scores = {criterion.id: float(criterion.max_score) for criterion in rubric.criteria}
-        self.overall_possible = float(rubric.points_possible)
+        self.max_scores = {
+            criterion.id: float(criterion.max_numeric_score)
+            for criterion in rubric.criteria
+            if criterion.max_numeric_score is not None
+        }
+        self.overall_possible = rubric.points_possible
         self.headers: List[str] = [
             "student_name",
             "overall_points_earned",
@@ -996,6 +1000,11 @@ class _SummaryBuilder:
             score = entry.get("score")
             if isinstance(score, (int, float)):
                 scores[crit_id] = float(score)
+            elif isinstance(score, str):
+                try:
+                    scores[crit_id] = float(score)
+                except ValueError:
+                    continue
         return scores
 
     @staticmethod

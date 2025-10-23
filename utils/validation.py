@@ -8,8 +8,10 @@ from pydantic import ValidationError
 
 from models import EvaluationModel, RubricModel
 
-WORD_LIMIT = 25
-LINE_LIMIT = 3
+COMMENT_WORD_LIMIT = 30
+EXCERPT_LINE_LIMIT = 3
+SUGGESTION_WORD_LIMIT = 120
+SUMMARY_WORD_LIMIT = 80
 
 
 def parse_rubric(payload: Any) -> RubricModel:
@@ -49,13 +51,26 @@ def normalize_evaluation(
     if not trim_text_fields:
         return data
 
+    summary = data.get("summary")
+    if isinstance(summary, str):
+        data["summary"] = _trim_words(summary, SUMMARY_WORD_LIMIT)
+
     for criterion in data.get("criteria", []):
-        evidence = criterion.get("evidence", {})
-        if isinstance(evidence, dict) and "quote" in evidence:
-            evidence["quote"] = _trim_lines(evidence["quote"], LINE_LIMIT)
-        for key in ("explanation", "advice"):
-            if key in criterion and isinstance(criterion[key], str):
-                criterion[key] = _trim_words(criterion[key], WORD_LIMIT)
+        examples = criterion.get("examples", [])
+        if isinstance(examples, list):
+            for example in examples:
+                if isinstance(example, dict):
+                    excerpt = example.get("excerpt")
+                    comment = example.get("comment")
+                    if isinstance(excerpt, str):
+                        example["excerpt"] = _trim_lines(excerpt, EXCERPT_LINE_LIMIT)
+                    if isinstance(comment, str):
+                        example["comment"] = _trim_words(comment, COMMENT_WORD_LIMIT)
+        suggestion = criterion.get("improvement_suggestion")
+        if isinstance(suggestion, str):
+            criterion["improvement_suggestion"] = _trim_words(
+                suggestion, SUGGESTION_WORD_LIMIT
+            )
     return data
 
 

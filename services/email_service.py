@@ -17,6 +17,8 @@ from email.utils import formataddr
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
+import textwrap
+
 from jinja2 import Environment, FileSystemLoader, TemplateError
 
 try:  # Optional dependency: YAML metadata support
@@ -151,6 +153,8 @@ class EmailTemplateRenderer:
             lstrip_blocks=True,
             keep_trailing_newline=True,
         )
+        self._env.filters.setdefault("wrap_lines", self._wrap_lines)
+        self._env.globals.setdefault("wrap_lines", self._wrap_lines)
         self._subject_template = self._load_template("subject.txt.j2")
         self._body_template = self._load_template("body.txt.j2")
 
@@ -167,6 +171,36 @@ class EmailTemplateRenderer:
             return self._env.get_template(name)
         except TemplateError as exc:
             raise EmailConfigError(f"Failed to load template '{name}': {exc}") from exc
+
+    @staticmethod
+    def _wrap_lines(
+        text: str,
+        *,
+        width: int = 80,
+        max_lines: Optional[int] = None,
+    ) -> List[str]:
+        sanitized = (text or "").strip()
+        if not sanitized:
+            return [""]
+        segments = [segment.strip() for segment in sanitized.splitlines() if segment.strip()]
+        if not segments:
+            segments = [sanitized]
+        wrapped: List[str] = []
+        for segment in segments:
+            parts = textwrap.wrap(
+                segment,
+                width=width,
+                break_long_words=False,
+                break_on_hyphens=False,
+            )
+            if not parts:
+                parts = [segment]
+            wrapped.extend(parts)
+            if max_lines is not None and len(wrapped) >= max_lines:
+                break
+        if max_lines is not None:
+            wrapped = wrapped[:max_lines]
+        return wrapped or [""]
 
 
 class EmailDeliveryService:
@@ -647,7 +681,8 @@ class EmailDeliveryService:
                 continue
             if not isinstance(payload, dict):
                 continue
-            if "overall" not in payload or "criteria" not in payload:
+            required_keys = {"criteria", "overall_score", "summary"}
+            if not all(key in payload for key in required_keys):
                 continue
             student_name = json_path.stem
             key = _normalize_name(student_name)
