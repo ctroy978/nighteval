@@ -1,1 +1,0 @@
-Prompt Generation Guidelines: Create prompts that paint a clear picture for image generation. Use precise, visual rather
