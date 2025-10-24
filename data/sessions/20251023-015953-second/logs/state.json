@@ -15,7 +15,8 @@
   "rubric_version_hash": "79cd6abe7b5d7fbeab3178248a6383ea8e50603a97fd58417a0150cb65d8e78a",
   "artifacts": {
     "csv": "data/sessions/20251023-015953-second/outputs/summary.csv",
-    "zip": "data/sessions/20251023-015953-second/outputs/evaluations.zip"
+    "zip": "data/sessions/20251023-015953-second/outputs/evaluations.zip",
+    "email_report": "data/sessions/20251023-015953-second/outputs/email_report.csv"
   },
   "started_at": "2025-10-23T01:59:53.138811",
   "finished_at": "2025-10-23T02:00:30.664536",

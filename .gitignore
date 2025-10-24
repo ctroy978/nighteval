@@ -29,3 +29,6 @@ Thumbs.db
 # IDE settings
 .idea/
 .vscode/
+
+# Data outputs
+data/
