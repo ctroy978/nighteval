@@ -272,6 +272,7 @@ class JobState:
     artifacts: Dict[str, str] = field(default_factory=dict)
     pdf_count: int = 0
     pdf_batch_path: Optional[str] = None
+    archived: bool = False
     lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def snapshot(self) -> Dict[str, Any]:
@@ -298,6 +299,7 @@ class JobState:
                 "finished_at": self.finished_at,
                 "pdf_count": self.pdf_count,
                 "pdf_batch_path": self.pdf_batch_path,
+                "archived": self.archived,
             }
             if self.error:
                 data["error"] = self.error

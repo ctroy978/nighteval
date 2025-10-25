@@ -4,99 +4,245 @@
   <meta charset="utf-8">
   <title>Batch Jobs</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 24px; color: #1f2933; background: #f7f7f7; }
-    h1 { margin-bottom: 16px; }
-    table { width: 100%; border-collapse: collapse; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-    th, td { padding: 12px; border-bottom: 1px solid #e1e7ef; text-align: left; }
-    th { background: #eef2f7; font-weight: 600; }
-    tr:hover td { background: #f3f8ff; }
-    .muted { color: #607087; font-size: 0.9rem; }
-    .tag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.85rem; color: #fff; background: #4a90e2; }
-    .tag.running { background: #f0ad4e; }
-    .tag.failed { background: #d64545; }
-    .tag.completed { background: #57a773; }
-    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
-    .btn { display: inline-block; padding: 6px 12px; border-radius: 4px; border: 1px solid #3a6fb0; background: #4f83d1; color: #fff; text-decoration: none; font-size: 0.9rem; }
-    .btn:hover { background: #3a6fb0; }
-    .btn-muted { border-color: #a0aec0; background: #cbd5e1; color: #5f6b7a; pointer-events: none; }
-    .empty { padding: 32px; background: #fff; text-align: center; border: 1px solid #e1e7ef; border-radius: 6px; }
-    footer { margin-top: 24px; font-size: 0.85rem; color: #6c7a8c; }
+    :root {
+      color-scheme: light;
+      --bg: #f5f6fb;
+      --card: #ffffff;
+      --border: #e1e7ef;
+      --text: #1f2933;
+      --muted: #5f6b7a;
+      --accent: #4f83d1;
+      --accent-dark: #3a6fb0;
+      --success: #57a773;
+      --warning: #f0ad4e;
+      --danger: #d64545;
+      --archived: #805ad5;
+    }
+
+    body { font-family: "Inter", "Segoe UI", Arial, sans-serif; margin: 24px; color: var(--text); background: var(--bg); }
+    h1, h2 { margin: 0; font-weight: 600; }
+    a { color: var(--accent); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+    th { background: #eef2f7; font-weight: 600; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.02em; color: #445066; }
+    tr:hover td { background: #f8fbff; }
+    .page-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08); margin-bottom: 24px; }
+    .card-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+    .card-body { padding: 0 20px 20px; }
+    .table-wrapper { overflow-x: auto; }
+    .muted { color: var(--muted); font-size: 0.9rem; }
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.8rem; color: #fff; text-transform: capitalize; }
+    .tag.running { background: var(--warning); }
+    .tag.failed { background: var(--danger); }
+    .tag.completed { background: var(--success); }
+    .tag.pending { background: #8892a6; }
+    .job-name { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .pill { padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 500; }
+    .pill-archived { background: rgba(128, 90, 213, 0.12); color: var(--archived); border: 1px solid rgba(128, 90, 213, 0.3); }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; padding: 6px 14px; border-radius: 6px; border: 1px solid transparent; font-size: 0.9rem; font-weight: 500; cursor: pointer; text-decoration: none; }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-dark); border-color: var(--accent-dark); }
+    .btn-outline { background: #fff; border-color: var(--accent); color: var(--accent); }
+    .btn-outline:hover { background: rgba(79, 131, 209, 0.08); }
+    .btn-muted { border-color: #cbd5e1; background: #e2e8f0; color: #64748b; cursor: not-allowed; }
+    .btn-ghost { background: rgba(128, 90, 213, 0.12); border-color: transparent; color: var(--archived); }
+    .inline-form { display: inline; }
+    .empty { padding: 32px; text-align: center; color: var(--muted); border: 1px dashed var(--border); border-radius: 8px; background: #fafbff; }
+    footer { margin-top: 24px; font-size: 0.85rem; color: var(--muted); }
+    @media (max-width: 960px) {
+      table, thead, tbody, th, td, tr { display: block; }
+      thead { display: none; }
+      tr { border-bottom: 1px solid var(--border); padding: 12px 0; }
+      td { border: none; padding: 6px 0; }
+      td::before { content: attr(data-label); font-weight: 600; display: block; font-size: 0.85rem; color: var(--muted); text-transform: uppercase; }
+    }
   </style>
 </head>
 <body>
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;">
-    <h1 style="margin:0;">Recent Batch Jobs</h1>
-    <a class="btn" href="/jobs/new" style="text-decoration:none;">New Job</a>
+  <div class="page-header">
+    <h1>Batch Jobs</h1>
+    <a class="btn btn-primary" href="/jobs/new">New Job</a>
   </div>
-  {% if jobs %}
-  <table>
-    <thead>
-      <tr>
-        <th>Job</th>
-        <th>Status</th>
-        <th>Validated</th>
-        <th>Success / Fail</th>
-        <th>Started</th>
-        <th>Finished</th>
-        <th>Artifacts</th>
-        <th>Email</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for job in jobs %}
-        {% set job_id = job.get('job_id') %}
-        {% set job_name = job.get('job_name') or job_id %}
-        {% set status = (job.get('status') or 'unknown').lower() %}
-        {% set validated = job.get('validated', 0) %}
-        {% set total = job.get('total', 0) %}
-        {% set succeeded = job.get('succeeded', 0) %}
-        {% set failed = job.get('failed', 0) %}
-        {% set started = job.get('started_at') %}
-        {% set finished = job.get('finished_at') %}
-        {% set artifacts = job.get('artifacts', {}) or {} %}
-        {% set email_ready = status == 'completed' and validated > 0 %}
-        <tr>
-          <td>
-            <div><strong>{{ job_name }}</strong></div>
-            <div class="muted">ID: {{ job_id }}</div>
-          </td>
-          <td>
-            <span class="tag {{ status }}">{{ status }}</span>
-          </td>
-          <td>{{ validated }} / {{ total }}</td>
-          <td>{{ succeeded }} / {{ failed }}</td>
-          <td>{{ started or '—' }}</td>
-          <td>{{ finished or '—' }}</td>
-          <td class="actions">
-            {% if artifacts.get('csv') %}
-              <a class="btn" href="/jobs/{{ job_id }}/download/csv">CSV</a>
-            {% endif %}
-            {% if artifacts.get('zip') %}
-              <a class="btn" href="/jobs/{{ job_id }}/download/zip">ZIP</a>
-            {% endif %}
-            {% if artifacts.get('pdf_batch') %}
-              <a class="btn" href="/jobs/{{ job_id }}/batch.pdf">Batch PDF</a>
-            {% endif %}
-            {% if artifacts.get('email_report') %}
-              <a class="btn" href="/jobs/{{ job_id }}/email/report">Email Report</a>
-            {% endif %}
-          </td>
-          <td>
-            {% if email_ready %}
-              <a class="btn" href="/jobs/{{ job_id }}/email">Open Console</a>
-            {% else %}
-              <span class="btn btn-muted">Unavailable</span>
-            {% endif %}
-          </td>
-        </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <div class="empty">No jobs found yet. Create one with <code>POST /jobs</code>.</div>
-  {% endif %}
+
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2>Active Jobs</h2>
+        <div class="muted">{{ active_jobs|length }} showing</div>
+      </div>
+    </div>
+    <div class="card-body">
+      {% if active_jobs %}
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Job</th>
+              <th>Status</th>
+              <th>Validated</th>
+              <th>Success / Fail</th>
+              <th>Started</th>
+              <th>Finished</th>
+              <th>Artifacts</th>
+              <th>Email</th>
+              <th>Archive</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for job in active_jobs %}
+              {% set job_id = job.get('job_id') %}
+              {% set job_name = job.get('job_name') or job_id %}
+              {% set status = (job.get('status') or 'unknown').lower() %}
+              {% set validated = job.get('validated', 0) %}
+              {% set total = job.get('total', 0) %}
+              {% set succeeded = job.get('succeeded', 0) %}
+              {% set failed = job.get('failed', 0) %}
+              {% set started = job.get('started_at') %}
+              {% set finished = job.get('finished_at') %}
+              {% set artifacts = job.get('artifacts', {}) or {} %}
+              {% set email_ready = status == 'completed' and validated > 0 %}
+              {% set archivable = status not in ['running', 'pending'] %}
+              <tr>
+                <td data-label="Job">
+                  <div class="job-name"><strong>{{ job_name }}</strong></div>
+                  <div class="muted">ID: {{ job_id }}</div>
+                </td>
+                <td data-label="Status">
+                  <span class="tag {{ status }}">{{ status }}</span>
+                </td>
+                <td data-label="Validated">{{ validated }} / {{ total }}</td>
+                <td data-label="Success / Fail">{{ succeeded }} / {{ failed }}</td>
+                <td data-label="Started">{{ started or '—' }}</td>
+                <td data-label="Finished">{{ finished or '—' }}</td>
+                <td data-label="Artifacts" class="actions">
+                  {% if artifacts.get('csv') %}
+                    <a class="btn btn-outline" href="/jobs/{{ job_id }}/download/csv">CSV</a>
+                  {% endif %}
+                  {% if artifacts.get('zip') %}
+                    <a class="btn btn-outline" href="/jobs/{{ job_id }}/download/zip">ZIP</a>
+                  {% endif %}
+                  {% if artifacts.get('pdf_batch') %}
+                    <a class="btn btn-outline" href="/jobs/{{ job_id }}/batch.pdf">Batch PDF</a>
+                  {% endif %}
+                  {% if artifacts.get('email_report') %}
+                    <a class="btn btn-outline" href="/jobs/{{ job_id }}/email/report">Email Report</a>
+                  {% endif %}
+                </td>
+                <td data-label="Email">
+                  {% if email_ready %}
+                    <a class="btn btn-outline" href="/jobs/{{ job_id }}/email">Open Console</a>
+                  {% else %}
+                    <span class="btn btn-muted">Unavailable</span>
+                  {% endif %}
+                </td>
+                <td data-label="Archive">
+                  <form class="inline-form" method="post" action="/jobs/{{ job_id }}/archive">
+                    <input type="hidden" name="archived" value="true">
+                    <button class="btn btn-outline" type="submit" {% if not archivable %}disabled title="Job must finish before it can be archived."{% endif %}>Archive</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <div class="empty">No active jobs found.</div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2>Archived Jobs</h2>
+        <div class="muted">{{ archived_jobs|length }} stored</div>
+      </div>
+    </div>
+    <div class="card-body">
+      {% if archived_jobs %}
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Job</th>
+              <th>Status</th>
+              <th>Validated</th>
+              <th>Success / Fail</th>
+              <th>Started</th>
+              <th>Finished</th>
+              <th>Artifacts</th>
+              <th>Email</th>
+              <th>Archive</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for job in archived_jobs %}
+              {% set job_id = job.get('job_id') %}
+              {% set job_name = job.get('job_name') or job_id %}
+              {% set status = (job.get('status') or 'unknown').lower() %}
+              {% set validated = job.get('validated', 0) %}
+              {% set total = job.get('total', 0) %}
+              {% set succeeded = job.get('succeeded', 0) %}
+              {% set failed = job.get('failed', 0) %}
+              {% set started = job.get('started_at') %}
+              {% set finished = job.get('finished_at') %}
+              {% set artifacts = job.get('artifacts', {}) or {} %}
+              {% set email_ready = status == 'completed' and validated > 0 %}
+              <tr>
+                <td data-label="Job">
+                  <div class="job-name"><strong>{{ job_name }}</strong><span class="pill pill-archived">Archived</span></div>
+                  <div class="muted">ID: {{ job_id }}</div>
+                </td>
+                <td data-label="Status">
+                  <span class="tag {{ status }}">{{ status }}</span>
+                </td>
+                <td data-label="Validated">{{ validated }} / {{ total }}</td>
+                <td data-label="Success / Fail">{{ succeeded }} / {{ failed }}</td>
+                <td data-label="Started">{{ started or '—' }}</td>
+                <td data-label="Finished">{{ finished or '—' }}</td>
+                <td data-label="Artifacts" class="actions">
+                  {% if artifacts.get('csv') %}
+                    <a class="btn btn-outline" href="/jobs/{{ job_id }}/download/csv">CSV</a>
+                  {% endif %}
+                  {% if artifacts.get('zip') %}
+                    <a class="btn btn-outline" href="/jobs/{{ job_id }}/download/zip">ZIP</a>
+                  {% endif %}
+                  {% if artifacts.get('pdf_batch') %}
+                    <a class="btn btn-outline" href="/jobs/{{ job_id }}/batch.pdf">Batch PDF</a>
+                  {% endif %}
+                  {% if artifacts.get('email_report') %}
+                    <a class="btn btn-outline" href="/jobs/{{ job_id }}/email/report">Email Report</a>
+                  {% endif %}
+                </td>
+                <td data-label="Email">
+                  {% if email_ready %}
+                    <a class="btn btn-outline" href="/jobs/{{ job_id }}/email">Open Console</a>
+                  {% else %}
+                    <span class="btn btn-muted">Unavailable</span>
+                  {% endif %}
+                </td>
+                <td data-label="Archive">
+                  <form class="inline-form" method="post" action="/jobs/{{ job_id }}/archive">
+                    <input type="hidden" name="archived" value="false">
+                    <button class="btn btn-ghost" type="submit">Unarchive</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <div class="empty">No archived jobs yet. Archive finished runs to keep this list tidy.</div>
+      {% endif %}
+    </div>
+  </section>
+
   <footer>
-    Need the API state? <code>GET /jobs/&lt;job_id&gt;</code> returns the JSON snapshot for any run.
+    Need the API state? <code>GET /jobs/&lt;job_id&gt;</code> returns the JSON snapshot, including the archived flag.
   </footer>
 </body>
 </html>

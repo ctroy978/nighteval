@@ -74,6 +74,7 @@ class JobStatusResponse(JobResponse):
     started_at: Optional[str]
     finished_at: Optional[str]
     error: Optional[str] = None
+    archived: bool = False
 
 
 class RubricErrorModel(BaseModel):
@@ -290,12 +291,15 @@ async def submit_job_form(
 
 @app.get("/jobs", response_class=HTMLResponse)
 async def jobs_page(request: Request) -> HTMLResponse:
-    entries = _list_jobs(limit=40)
+    entries = _list_jobs(limit=80)
+    active_jobs = [job for job in entries if not job.get("archived")]
+    archived_jobs = [job for job in entries if job.get("archived")]
     return templates.TemplateResponse(
         "jobs.html",
         {
             "request": request,
-            "jobs": entries,
+            "active_jobs": active_jobs,
+            "archived_jobs": archived_jobs,
         },
     )
 
@@ -315,6 +319,19 @@ async def job_status(job_id: str, request: Request) -> Dict[str, Any] | HTMLResp
         return templates.TemplateResponse("job_status.html", context)
 
     return _format_status_response(snapshot)
+
+
+@app.post("/jobs/{job_id}/archive")
+async def archive_job(job_id: str, request: Request):
+    archived_flag = await _extract_archive_flag(request)
+    snapshot = _set_job_archived(job_id, archived_flag)
+
+    content_type = (request.headers.get("content-type") or "").lower()
+    if "application/json" in content_type:
+        return {"job_id": job_id, "archived": snapshot.get("archived", False)}
+
+    referer = request.headers.get("referer") or "/jobs"
+    return RedirectResponse(url=referer, status_code=303)
 
 
 @app.get("/jobs/{job_id}/download/{artifact}")
@@ -726,6 +743,57 @@ def _list_jobs(limit: int = 40) -> List[Dict[str, Any]]:
     return jobs
 
 
+async def _extract_archive_flag(request: Request) -> bool:
+    content_type = (request.headers.get("content-type") or "").lower()
+    if "application/json" in content_type:
+        try:
+            payload = await request.json()
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid JSON body: {exc.msg}") from exc
+        raw_value = payload.get("archived") if isinstance(payload, dict) else None
+    else:
+        form = await request.form()
+        raw_value = form.get("archived")
+
+    if raw_value is None:
+        raise HTTPException(status_code=400, detail="Request must include an 'archived' value.")
+
+    if isinstance(raw_value, bool):
+        return raw_value
+    if isinstance(raw_value, (int, float)):
+        return bool(raw_value)
+    if isinstance(raw_value, str):
+        normalized = raw_value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off", ""}:
+            return False
+
+    raise HTTPException(status_code=400, detail="Unable to interpret 'archived' value as boolean.")
+
+
+def _set_job_archived(job_id: str, archived: bool) -> Dict[str, Any]:
+    state = job_manager.get_job(job_id)
+    if state:
+        with state.lock:
+            state.archived = archived
+        snapshot = state.snapshot()
+        job_dir = state.job_dir
+    else:
+        snapshot = _load_snapshot_from_disk(job_id)
+        if snapshot is None:
+            raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+        snapshot["archived"] = archived
+        job_dir = _resolve_output_base() / job_id
+
+    if not job_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Job directory missing for '{job_id}'")
+
+    state_path = job_dir / "logs" / "state.json"
+    io_utils.write_json(state_path, snapshot)
+    return snapshot
+
+
 def _start_job_response(essays_folder: Path, rubric_path: Path, job_name: Optional[str]) -> Dict[str, Any]:
     state = job_manager.start_job(
         essays_folder=essays_folder,
@@ -1057,6 +1125,7 @@ def _load_snapshot_from_disk(job_id: str) -> Optional[Dict[str, Any]]:
     data.setdefault("job_name", None)
     data.setdefault("pdf_count", 0)
     data.setdefault("pdf_batch_path", None)
+    data.setdefault("archived", False)
     artifacts = data["artifacts"]
     if "csv" not in artifacts:
         artifacts["csv"] = None
@@ -1093,6 +1162,7 @@ def _format_status_response(snapshot: Dict[str, Any]) -> Dict[str, Any]:
         "started_at": snapshot.get("started_at"),
         "finished_at": snapshot.get("finished_at"),
         "error": snapshot.get("error"),
+        "archived": snapshot.get("archived", False),
     }
 
 
