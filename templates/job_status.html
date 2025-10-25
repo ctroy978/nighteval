@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Job {{ job_id }}</title>
+  {% if is_active %}
+    <meta http-equiv="refresh" content="{{ status_poll_seconds }}">
+  {% endif %}
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: "Inter", "Segoe UI", Arial, sans-serif;
+    }
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #f5f7fb;
+      color: #111827;
+    }
+    a { color: #2563eb; }
+    .layout {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+    }
+    .header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: baseline;
+    }
+    .status-pill {
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-weight: 600;
+      text-transform: capitalize;
+    }
+    .status-pill.running { background: #f59e0b; color: #fff; }
+    .status-pill.pending { background: #6366f1; color: #fff; }
+    .status-pill.completed { background: #16a34a; color: #fff; }
+    .status-pill.failed { background: #dc2626; color: #fff; }
+    .status-pill.unknown { background: #94a3b8; color: #fff; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+    .stat {
+      background: #f8fafc;
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .stat-label {
+      color: #64748b;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .stat-value {
+      font-size: 1.4rem;
+      font-weight: 700;
+    }
+    .progress {
+      margin-top: 12px;
+    }
+    .progress-track {
+      height: 12px;
+      background: #e2e8f0;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%;
+      background: #2563eb;
+    }
+    .section-title {
+      margin: 0 0 12px 0;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+    .downloads {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-weight: 600;
+      text-decoration: none;
+      background: #0f172a;
+      color: #fff;
+    }
+    .btn.secondary {
+      background: #e2e8f0;
+      color: #1f2933;
+    }
+    pre {
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 16px;
+      border-radius: 10px;
+      white-space: pre-wrap;
+      max-height: 320px;
+      overflow-y: auto;
+      font-size: 0.95rem;
+    }
+    .banner {
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-weight: 600;
+    }
+    .banner.error {
+      background: #fff5f5;
+      border: 1px solid #feb2b2;
+      color: #9b2c2c;
+    }
+    .meta {
+      font-size: 0.9rem;
+      color: #475569;
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <div class="card">
+      <div class="header">
+        <div>
+          <h1>{{ job_name }}</h1>
+          <div class="meta">Job ID: {{ job_id }}</div>
+        </div>
+        <span class="status-pill {{ status }}">{{ status_label }}</span>
+      </div>
+      {% if error_message %}
+        <div class="banner error">
+          {{ error_message }}
+          {% if log_download_url %}
+            — <a href="{{ log_download_url }}">download job.log</a>
+          {% endif %}
+        </div>
+      {% endif %}
+      <div class="grid">
+        <div class="stat">
+          <div class="stat-label">Progress</div>
+          <div class="stat-value">{{ snapshot.processed }} / {{ snapshot.total }}</div>
+          <div class="progress">
+            <div class="progress-track">
+              <div class="progress-bar" style="width: {{ progress_pct }}%;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Validated essays</div>
+          <div class="stat-value">{{ snapshot.validated }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Succeeded / Failed</div>
+          <div class="stat-value">{{ snapshot.succeeded }} / {{ snapshot.failed }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Started</div>
+          <div class="stat-value">{{ started_display or '—' }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Finished</div>
+          <div class="stat-value">{{ finished_display or '—' }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="section-title">Artifacts</h2>
+      {% if artifact_links.csv or artifact_links.zip or artifact_links.pdf_batch %}
+        <div class="downloads">
+          {% if artifact_links.csv %}
+            <a class="btn" href="{{ artifact_links.csv }}">Download CSV</a>
+          {% endif %}
+          {% if artifact_links.zip %}
+            <a class="btn" href="{{ artifact_links.zip }}">Download ZIP</a>
+          {% endif %}
+          {% if artifact_links.pdf_batch %}
+            <a class="btn" href="{{ artifact_links.pdf_batch }}">Batch PDF</a>
+          {% endif %}
+          <a class="btn secondary" href="/jobs">Back to jobs</a>
+        </div>
+      {% else %}
+        <p class="meta">Artifacts will appear as soon as each file lands in the outputs directory.</p>
+        <div class="downloads">
+          <a class="btn secondary" href="/jobs">Back to jobs</a>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2 class="section-title">Counters</h2>
+      <div class="grid">
+        {% for label, value in counts.items() %}
+          <div class="stat">
+            <div class="stat-label">{{ label }}</div>
+            <div class="stat-value">{{ value }}</div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="header">
+        <h2 class="section-title">Latest job.log entries</h2>
+        {% if log_download_url %}
+          <a href="{{ log_download_url }}">Download full log</a>
+        {% endif %}
+      </div>
+      {% if log_lines %}
+        <pre>{% for line in log_lines %}{{ line }}{% if not loop.last %}
+{% endif %}{% endfor %}</pre>
+      {% else %}
+        <p class="meta">No log entries available yet.</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2 class="section-title">Need the API response?</h2>
+      <p class="meta">GET <code>/jobs/{{ job_id }}?format=json</code> returns the live JSON snapshot used above.</p>
+    </div>
+  </div>
+</body>
+</html>

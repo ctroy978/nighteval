@@ -6,3 +6,4 @@ python-dotenv
 Jinja2
 PyYAML
 reportlab
+python-multipart

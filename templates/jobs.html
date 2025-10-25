@@ -24,7 +24,10 @@
   </style>
 </head>
 <body>
-  <h1>Recent Batch Jobs</h1>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;">
+    <h1 style="margin:0;">Recent Batch Jobs</h1>
+    <a class="btn" href="/jobs/new" style="text-decoration:none;">New Job</a>
+  </div>
   {% if jobs %}
   <table>
     <thead>

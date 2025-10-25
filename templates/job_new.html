@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Start a New Job</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: "Inter", "Segoe UI", Arial, sans-serif;
+    }
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #edf2f7;
+      color: #1f2933;
+    }
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+      padding: 24px;
+      max-width: 960px;
+      margin: 0 auto 24px auto;
+    }
+    h1 {
+      margin-top: 0;
+      font-size: 1.8rem;
+    }
+    label {
+      font-weight: 600;
+      display: block;
+      margin-bottom: 6px;
+    }
+    input[type="text"], input[type="file"] {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      border-radius: 6px;
+      border: 1px solid #cbd5e0;
+      font-size: 1rem;
+      margin-bottom: 6px;
+    }
+    input[type="file"] {
+      padding: 6px;
+    }
+    .field {
+      margin-bottom: 18px;
+    }
+    .hint {
+      font-size: 0.9rem;
+      color: #4a5568;
+      margin: 0;
+    }
+    .error {
+      color: #c53030;
+      font-size: 0.9rem;
+      margin-top: 4px;
+    }
+    .alert {
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      background: #fff5f5;
+      border: 1px solid #feb2b2;
+      color: #9b2c2c;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    button {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 20px;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #1d4ed8;
+    }
+    .muted-link {
+      color: #4a5568;
+      text-decoration: none;
+    }
+    .muted-link:hover {
+      text-decoration: underline;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+    }
+    th, td {
+      border-bottom: 1px solid #e2e8f0;
+      padding: 10px;
+      text-align: left;
+    }
+    th {
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #4a5568;
+    }
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      text-transform: capitalize;
+    }
+    .tag.running { background: #f59e0b; color: #fff; }
+    .tag.completed { background: #16a34a; color: #fff; }
+    .tag.failed { background: #dc2626; color: #fff; }
+    .tag.pending { background: #6366f1; color: #fff; }
+    .empty-row {
+      color: #4a5568;
+      text-align: center;
+    }
+    .subtle {
+      font-size: 0.85rem;
+      color: #4a5568;
+      margin-top: -6px;
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>New Evaluation Job</h1>
+    <p class="subtle">Point the evaluator at a folder of essay PDFs and the rubric JSON. We will reuse the existing API & pipeline—this page is just a friendly wrapper.</p>
+    {% if general_error %}
+      <div class="alert">{{ general_error }}</div>
+    {% endif %}
+    <form method="post" enctype="multipart/form-data">
+      <div class="field">
+        <label for="essays_folder">Essays folder</label>
+        <input type="text" id="essays_folder" name="essays_folder" value="{{ values.essays_folder }}" placeholder="/home/pi/essays/batch_01" list="allowedRoots">
+        <p class="hint">Use exported PDFs named like <code>Student Name.pdf</code>. The folder must contain at least one PDF.</p>
+        {% if errors.essays_folder %}
+          <div class="error">{{ errors.essays_folder }}</div>
+        {% endif %}
+      </div>
+      <datalist id="allowedRoots">
+        {% if allowed_roots %}
+          {% for item in allowed_roots.split(',') %}
+            {% if item.strip() %}
+              <option value="{{ item.strip() }}"></option>
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+      </datalist>
+      <div class="field">
+        <label for="rubric_file">Rubric JSON upload</label>
+        <input type="file" id="rubric_file" name="rubric_file" accept="application/json,.json">
+        <p class="hint">Upload the canonical <code>rubric.json</code> or provide a server path below.</p>
+      </div>
+      <div class="field">
+        <label for="rubric_path">Rubric file path (optional alternative)</label>
+        <input type="text" id="rubric_path" name="rubric_path" value="{{ values.rubric_path }}" placeholder="/home/pi/rubrics/latest_rubric.json">
+        {% if errors.rubric %}
+          <div class="error">{{ errors.rubric }}</div>
+        {% endif %}
+      </div>
+      <div class="field">
+        <label for="job_name">Job name (optional)</label>
+        <input type="text" id="job_name" name="job_name" value="{{ values.job_name }}" placeholder="Spring Section A">
+      </div>
+      <div class="actions">
+        <button type="submit">Start Job</button>
+        <a class="muted-link" href="/jobs">Back to job list</a>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Recent Jobs</h2>
+    {% if recent_jobs %}
+      <table>
+        <thead>
+          <tr>
+            <th>Job</th>
+            <th>Status</th>
+            <th>Validated</th>
+            <th>Started</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for job in recent_jobs %}
+            {% set status = (job.get('status') or 'unknown').lower() %}
+            <tr>
+              <td><a class="muted-link" href="/jobs/{{ job.get('job_id') }}">{{ job.get('job_name') or job.get('job_id') }}</a></td>
+              <td><span class="tag {{ status }}">{{ status }}</span></td>
+              <td>{{ job.get('validated', 0) }} / {{ job.get('total', 0) }}</td>
+              <td>{{ job.get('started_at') or '—' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty-row">No jobs yet—submit the form above to kick off the first batch.</p>
+    {% endif %}
+  </div>
+</body>
+</html>

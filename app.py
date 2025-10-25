@@ -10,20 +10,21 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 from urllib.parse import quote_plus
+from uuid import uuid4
 
 from datetime import datetime
 
 from dotenv import load_dotenv
-from fastapi import Body, FastAPI, HTTPException, File, Form, Request, UploadFile
+from fastapi import Body, FastAPI, HTTPException, File, Form, Request, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from services import EmailConfigError, EmailDeliveryService
 from services.batch_runner import JobManager
 from services.rubric_manager import RubricManager, RubricExtractResponse
-from utils import io_utils
+from utils import io_utils, validation
 
 load_dotenv()
 
@@ -39,6 +40,9 @@ job_manager = JobManager(output_base=_resolve_output_base())
 rubric_manager = RubricManager(base_dir=_resolve_output_base())
 
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
+
+STATUS_POLL_SECONDS = max(int(os.getenv("STATUS_POLL_SECONDS", "3")), 1)
+
 
 app = FastAPI(title="Batch Essay Evaluator", version="1.1.0")
 
@@ -179,7 +183,7 @@ class EmailSendResponse(BaseModel):
 @app.post("/jobs", response_model=JobResponse)
 async def create_job(request: JobRequest) -> Dict[str, Any]:
     try:
-        state = job_manager.start_job(
+        return _start_job_response(
             essays_folder=Path(request.essays_folder),
             rubric_path=Path(request.rubric_path),
             job_name=request.job_name,
@@ -189,13 +193,99 @@ async def create_job(request: JobRequest) -> Dict[str, Any]:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    snapshot = state.snapshot()
-    return {
-        "job_id": snapshot["job_id"],
-        "status": snapshot["status"],
-        "total": snapshot["total"],
-        "processed": snapshot["processed"],
-    }
+
+@app.get("/jobs/new", response_class=HTMLResponse)
+async def new_job_form(request: Request) -> HTMLResponse:
+    context = _job_form_context(request)
+    return templates.TemplateResponse("job_new.html", context)
+
+
+@app.post("/jobs/new", response_class=HTMLResponse)
+async def submit_job_form(
+    request: Request,
+    essays_folder: str = Form(""),
+    rubric_path: str = Form(""),
+    job_name: str = Form(""),
+    rubric_file: Optional[UploadFile] = File(None),
+) -> Response:
+    errors: Dict[str, str] = {}
+    general_error: Optional[str] = None
+
+    essays_folder_raw = (essays_folder or "").strip()
+    rubric_path_raw = (rubric_path or "").strip()
+    job_name_raw = (job_name or "").strip()
+    job_name_value = job_name_raw or None
+
+    essays_path: Optional[Path] = None
+    rubric_source: Optional[Path] = None
+
+    if not essays_folder_raw:
+        errors["essays_folder"] = "Provide the path to a folder of student PDFs."
+    else:
+        try:
+            essays_path = _validate_essays_folder(Path(essays_folder_raw))
+        except ValueError as exc:
+            errors["essays_folder"] = str(exc)
+
+    upload_file = rubric_file if rubric_file and (rubric_file.filename or "").strip() else None
+    try:
+        rubric_source = await _resolve_rubric_source(
+            upload_file=upload_file,
+            rubric_path=rubric_path_raw,
+        )
+    except ValueError as exc:
+        errors["rubric"] = str(exc)
+
+    if errors:
+        context = _job_form_context(
+            request,
+            values={
+                "essays_folder": essays_folder_raw,
+                "rubric_path": rubric_path_raw,
+                "job_name": job_name_raw,
+            },
+            errors=errors,
+        )
+        return templates.TemplateResponse("job_new.html", context, status_code=400)
+
+    assert essays_path is not None and rubric_source is not None
+
+    try:
+        response = _start_job_response(
+            essays_folder=essays_path,
+            rubric_path=rubric_source,
+            job_name=job_name_value,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        general_error = str(exc)
+        context = _job_form_context(
+            request,
+            values={
+                "essays_folder": essays_folder_raw,
+                "rubric_path": rubric_path_raw,
+                "job_name": job_name_raw,
+            },
+            errors=errors,
+            general_error=general_error,
+        )
+        return templates.TemplateResponse("job_new.html", context, status_code=400)
+
+    job_id = response.get("job_id")
+    if not job_id:
+        general_error = "Unable to start job; missing identifier."
+        context = _job_form_context(
+            request,
+            values={
+                "essays_folder": essays_folder_raw,
+                "rubric_path": rubric_path_raw,
+                "job_name": job_name_raw,
+            },
+            errors=errors,
+            general_error=general_error,
+        )
+        return templates.TemplateResponse("job_new.html", context, status_code=500)
+
+    return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
 
 
 @app.get("/jobs", response_class=HTMLResponse)
@@ -211,7 +301,7 @@ async def jobs_page(request: Request) -> HTMLResponse:
 
 
 @app.get("/jobs/{job_id}", response_model=JobStatusResponse)
-async def job_status(job_id: str) -> Dict[str, Any]:
+async def job_status(job_id: str, request: Request) -> Dict[str, Any] | HTMLResponse:
     state = job_manager.get_job(job_id)
     if state:
         snapshot = state.snapshot()
@@ -219,6 +309,10 @@ async def job_status(job_id: str) -> Dict[str, Any]:
         snapshot = _load_snapshot_from_disk(job_id)
         if snapshot is None:
             raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+
+    if _wants_html(request):
+        context = _job_status_context(request, job_id, snapshot)
+        return templates.TemplateResponse("job_status.html", context)
 
     return _format_status_response(snapshot)
 
@@ -278,6 +372,21 @@ async def batch_summary_pdf(job_id: str):  # type: ignore[override]
         raise HTTPException(status_code=404, detail="Batch PDF missing on disk")
 
     return FileResponse(path, media_type="application/pdf", filename=path.name)
+
+
+@app.get("/jobs/{job_id}/logs/job.log")
+async def job_log_file(job_id: str):
+    base = _resolve_output_base()
+    log_path = base / job_id / "logs" / "job.log"
+    if not log_path.exists():
+        raise HTTPException(status_code=404, detail="Log file not found")
+    return FileResponse(log_path, media_type="text/plain", filename="job.log")
+
+
+@app.get("/jobs/{job_id}/logs/tail", response_class=PlainTextResponse)
+async def job_log_tail(job_id: str, limit: int = 15) -> PlainTextResponse:
+    lines = _read_log_tail(job_id, limit=limit)
+    return PlainTextResponse("\n".join(lines))
 
 
 @app.get("/jobs/{job_id}/email", response_class=HTMLResponse)
@@ -615,6 +724,221 @@ def _list_jobs(limit: int = 40) -> List[Dict[str, Any]]:
         if len(jobs) >= limit:
             break
     return jobs
+
+
+def _start_job_response(essays_folder: Path, rubric_path: Path, job_name: Optional[str]) -> Dict[str, Any]:
+    state = job_manager.start_job(
+        essays_folder=essays_folder,
+        rubric_path=rubric_path,
+        job_name=job_name,
+    )
+    snapshot = state.snapshot()
+    return {
+        "job_id": snapshot["job_id"],
+        "status": snapshot["status"],
+        "total": snapshot["total"],
+        "processed": snapshot["processed"],
+    }
+
+
+def _job_form_context(
+    request: Request,
+    *,
+    values: Optional[Dict[str, str]] = None,
+    errors: Optional[Dict[str, str]] = None,
+    general_error: Optional[str] = None,
+) -> Dict[str, Any]:
+    defaults = {
+        "essays_folder": "",
+        "rubric_path": "",
+        "job_name": "",
+    }
+    if values:
+        defaults.update(values)
+    return {
+        "request": request,
+        "values": defaults,
+        "errors": errors or {},
+        "general_error": general_error,
+        "recent_jobs": _list_jobs(limit=5),
+        "allowed_roots": os.getenv("ALLOWED_ROOTS", ""),
+    }
+
+
+def _validate_essays_folder(folder: Path) -> Path:
+    candidate = folder.expanduser()
+    if not candidate.exists():
+        raise ValueError("Essays folder was not found.")
+    if not candidate.is_dir():
+        raise ValueError("Essays folder must be a directory.")
+
+    try:
+        pdf_count = sum(
+            1
+            for path in candidate.iterdir()
+            if path.is_file() and path.suffix.lower() == ".pdf"
+        )
+    except OSError as exc:
+        raise ValueError(f"Unable to inspect essays folder: {exc}") from exc
+
+    if pdf_count <= 0:
+        raise ValueError("Add at least one '.pdf' file to the essays folder.")
+    return candidate
+
+
+async def _resolve_rubric_source(
+    *,
+    upload_file: Optional[UploadFile],
+    rubric_path: str,
+) -> Path:
+    trimmed_path = rubric_path.strip()
+    has_upload = upload_file is not None and (upload_file.filename or "").strip()
+
+    if has_upload:
+        return await _persist_uploaded_rubric(upload_file)
+
+    if trimmed_path:
+        return _validate_rubric_path(Path(trimmed_path))
+
+    raise ValueError("Upload rubric.json or provide a local rubric path.")
+
+
+def _validate_rubric_path(path: Path) -> Path:
+    candidate = path.expanduser()
+    if not candidate.exists():
+        raise ValueError("Rubric file path does not exist.")
+    if not candidate.is_file():
+        raise ValueError("Rubric path must reference a file.")
+    try:
+        payload = io_utils.read_json_file(str(candidate))
+        validation.parse_rubric(payload)
+    except (FileNotFoundError, json.JSONDecodeError, ValidationError) as exc:
+        raise ValueError(f"Invalid rubric file: {exc}") from exc
+    return candidate
+
+
+async def _persist_uploaded_rubric(upload_file: UploadFile) -> Path:
+    raw = await upload_file.read()
+    if not raw:
+        raise ValueError("Rubric upload was empty.")
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValueError("Rubric upload must be UTF-8 text.") from exc
+
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Rubric JSON error: {exc.msg}") from exc
+
+    try:
+        validation.parse_rubric(payload)
+    except ValidationError as exc:
+        messages = validation.format_validation_errors(exc)
+        raise ValueError(
+            messages[0] if messages else "Uploaded rubric failed schema validation."
+        ) from exc
+
+    upload_dir = _resolve_output_base() / "_uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"rubric-{uuid4().hex}.json"
+    target = upload_dir / filename
+    io_utils.write_json(target, payload)
+    return target
+
+
+def _wants_html(request: Request) -> bool:
+    forced = request.query_params.get("format")
+    if forced == "json":
+        return False
+    if forced == "html":
+        return True
+
+    accept = (request.headers.get("accept") or "").lower()
+    return "text/html" in accept
+
+
+def _job_status_context(
+    request: Request,
+    job_id: str,
+    snapshot: Dict[str, Any],
+) -> Dict[str, Any]:
+    status = (snapshot.get("status") or "unknown").lower()
+    total = int(snapshot.get("total") or 0)
+    processed = int(snapshot.get("processed") or 0)
+    progress_pct = int((processed / total) * 100) if total else 0
+    artifacts = snapshot.get("artifacts") or {}
+    links = {
+        "csv": "/jobs/{}/download/csv".format(job_id) if _artifact_is_ready(artifacts.get("csv")) else None,
+        "zip": "/jobs/{}/download/zip".format(job_id) if _artifact_is_ready(artifacts.get("zip")) else None,
+        "pdf_batch": "/jobs/{}/batch.pdf".format(job_id) if _artifact_is_ready(
+            artifacts.get("pdf_batch")
+        )
+        else None,
+    }
+    counts = {
+        "Total essays": total,
+        "Processed": processed,
+        "Validated": int(snapshot.get("validated") or 0),
+        "Succeeded": int(snapshot.get("succeeded") or 0),
+        "Failed": int(snapshot.get("failed") or 0),
+        "Schema fail": int(snapshot.get("schema_fail") or 0),
+        "Low text rejected": int(snapshot.get("low_text_rejected_count") or 0),
+    }
+    started_display = _format_timestamp(snapshot.get("started_at"))
+    finished_display = _format_timestamp(snapshot.get("finished_at"))
+    log_lines = _read_log_tail(job_id, limit=15)
+
+    return {
+        "request": request,
+        "job_id": job_id,
+        "job_name": snapshot.get("job_name") or job_id,
+        "snapshot": snapshot,
+        "status": status,
+        "status_label": status.capitalize(),
+        "is_active": status in {"running", "pending"},
+        "status_poll_seconds": STATUS_POLL_SECONDS,
+        "progress_pct": progress_pct,
+        "counts": counts,
+        "artifact_links": links,
+        "error_message": snapshot.get("error"),
+        "log_lines": log_lines,
+        "log_available": bool(log_lines),
+        "log_download_url": f"/jobs/{job_id}/logs/job.log",
+        "started_display": started_display,
+        "finished_display": finished_display,
+    }
+
+
+def _format_timestamp(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return value
+    return parsed.strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
+def _artifact_is_ready(path: Optional[str]) -> bool:
+    if not path:
+        return False
+    candidate = Path(path)
+    return candidate.exists()
+
+
+def _read_log_tail(job_id: str, limit: int = 15) -> List[str]:
+    log_path = _resolve_output_base() / job_id / "logs" / "job.log"
+    if not log_path.exists():
+        return []
+    try:
+        with log_path.open("r", encoding="utf-8", errors="ignore") as handle:
+            lines = handle.readlines()
+    except OSError:
+        return []
+    if limit <= 0:
+        limit = 1
+    return [line.rstrip("\n") for line in lines[-limit:]]
 
 
 def _serialize_attachment_config(config: Any) -> Dict[str, bool]:
