@@ -21,6 +21,7 @@ dist/
 # Environment and secrets
 .env
 .evn
+*.local
 
 # OS-specific files
 .DS_Store
