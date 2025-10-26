@@ -197,7 +197,7 @@
     {% if general_error %}
       <div class="alert">{{ general_error }}</div>
     {% endif %}
-    <form method="post" enctype="multipart/form-data">
+    <form method="post" action="{{ base_url }}/jobs/new" enctype="multipart/form-data">
       <div class="field">
         <label for="essays_folder">Essays folder</label>
         <input type="text" id="essays_folder" name="essays_folder" value="{{ values.essays_folder }}" placeholder="/home/pi/essays/batch_01" list="allowedRoots">
