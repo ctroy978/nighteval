@@ -42,7 +42,7 @@
   </style>
 </head>
 <body>
-  <div class="breadcrumbs"><a href="/jobs">&larr; Back to Jobs</a></div>
+  <div class="breadcrumbs"><a href="{{ base_url }}/jobs">&larr; Back to Jobs</a></div>
   <h1>Email Console</h1>
   <div class="card">
     <div class="flex-between">
@@ -89,7 +89,7 @@
     {% if upload_error %}
       <div class="alert error">{{ upload_error }}</div>
     {% endif %}
-    <form method="post" action="/jobs/{{ job_id }}/email/upload_csv" enctype="multipart/form-data">
+    <form method="post" action="{{ base_url }}/jobs/{{ job_id }}/email/upload_csv" enctype="multipart/form-data">
       <input type="file" name="students_csv" accept=".csv" required>
       <button type="submit">Upload CSV</button>
       {% if csv_exists %}
@@ -145,12 +145,13 @@
     <div id="send-status"></div>
     <div id="report-link" class="small" style="margin-top:8px;">
       {% if report_exists %}
-        Latest report: <a href="/jobs/{{ job_id }}/email/report">email_report.csv</a>
+        Latest report: <a href="{{ base_url }}/jobs/{{ job_id }}/email/report">email_report.csv</a>
       {% endif %}
     </div>
   </div>
 
   <script>
+    const baseUrl = {{ base_url|tojson }} || '';
     const jobId = {{ job_id|tojson }};
     const previewBtn = document.getElementById('preview-btn');
     const previewSummary = document.getElementById('preview-summary');
@@ -167,8 +168,8 @@
     const sendStatus = document.getElementById('send-status');
     const reportLink = document.getElementById('report-link');
 
-    const previewUrl = '/jobs/' + jobId + '/email/preview';
-    const sendUrl = '/jobs/' + jobId + '/email/send';
+    const previewUrl = baseUrl + '/jobs/' + jobId + '/email/preview';
+    const sendUrl = baseUrl + '/jobs/' + jobId + '/email/send';
 
     function collectOptions() {
       return {
@@ -330,7 +331,7 @@
             sendStatus.textContent += ' (' + parts.join(', ') + ')';
           }
           if (reportLink) {
-            reportLink.innerHTML = 'Latest report: <a href="/jobs/' + jobId + '/email/report">email_report.csv</a>';
+            reportLink.innerHTML = 'Latest report: <a href="' + baseUrl + '/jobs/' + jobId + '/email/report">email_report.csv</a>';
           }
         }
       } catch (err) {

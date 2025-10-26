@@ -133,6 +133,7 @@
   </style>
 </head>
 <body>
+  {% set base = base_url %}
   <div class="layout">
     <div class="card">
       <div class="header">
@@ -192,12 +193,12 @@
           {% if artifact_links.pdf_batch %}
             <a class="btn" href="{{ artifact_links.pdf_batch }}">Batch PDF</a>
           {% endif %}
-          <a class="btn secondary" href="/jobs">Back to jobs</a>
+          <a class="btn secondary" href="{{ base }}/jobs">Back to jobs</a>
         </div>
       {% else %}
         <p class="meta">Artifacts will appear as soon as each file lands in the outputs directory.</p>
         <div class="downloads">
-          <a class="btn secondary" href="/jobs">Back to jobs</a>
+          <a class="btn secondary" href="{{ base }}/jobs">Back to jobs</a>
         </div>
       {% endif %}
     </div>
@@ -231,7 +232,7 @@
 
     <div class="card">
       <h2 class="section-title">Need the API response?</h2>
-      <p class="meta">GET <code>/jobs/{{ job_id }}?format=json</code> returns the live JSON snapshot used above.</p>
+      <p class="meta">GET <code>{{ base }}/jobs/{{ job_id }}?format=json</code> returns the live JSON snapshot used above.</p>
     </div>
   </div>
 </body>

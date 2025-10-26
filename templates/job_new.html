@@ -171,7 +171,7 @@
       </div>
       <div class="actions">
         <button type="submit">Start Job</button>
-        <a class="muted-link" href="/jobs">Back to job list</a>
+        <a class="muted-link" href="{{ base_url }}/jobs">Back to job list</a>
       </div>
     </form>
   </div>
@@ -192,7 +192,7 @@
           {% for job in recent_jobs %}
             {% set status = (job.get('status') or 'unknown').lower() %}
             <tr>
-              <td><a class="muted-link" href="/jobs/{{ job.get('job_id') }}">{{ job.get('job_name') or job.get('job_id') }}</a></td>
+              <td><a class="muted-link" href="{{ base_url }}/jobs/{{ job.get('job_id') }}">{{ job.get('job_name') or job.get('job_id') }}</a></td>
               <td><span class="tag {{ status }}">{{ status }}</span></td>
               <td>{{ job.get('validated', 0) }} / {{ job.get('total', 0) }}</td>
               <td>{{ job.get('started_at') or '—' }}</td>

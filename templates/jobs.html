@@ -61,9 +61,10 @@
   </style>
 </head>
 <body>
+  {% set base = base_url %}
   <div class="page-header">
     <h1>Batch Jobs</h1>
-    <a class="btn btn-primary" href="/jobs/new">New Job</a>
+    <a class="btn btn-primary" href="{{ base }}/jobs/new">New Job</a>
   </div>
 
   <section class="card">
@@ -118,27 +119,27 @@
                 <td data-label="Finished">{{ finished or '—' }}</td>
                 <td data-label="Artifacts" class="actions">
                   {% if artifacts.get('csv') %}
-                    <a class="btn btn-outline" href="/jobs/{{ job_id }}/download/csv">CSV</a>
+                    <a class="btn btn-outline" href="{{ base }}/jobs/{{ job_id }}/download/csv">CSV</a>
                   {% endif %}
                   {% if artifacts.get('zip') %}
-                    <a class="btn btn-outline" href="/jobs/{{ job_id }}/download/zip">ZIP</a>
+                    <a class="btn btn-outline" href="{{ base }}/jobs/{{ job_id }}/download/zip">ZIP</a>
                   {% endif %}
                   {% if artifacts.get('pdf_batch') %}
-                    <a class="btn btn-outline" href="/jobs/{{ job_id }}/batch.pdf">Batch PDF</a>
+                    <a class="btn btn-outline" href="{{ base }}/jobs/{{ job_id }}/batch.pdf">Batch PDF</a>
                   {% endif %}
                   {% if artifacts.get('email_report') %}
-                    <a class="btn btn-outline" href="/jobs/{{ job_id }}/email/report">Email Report</a>
+                    <a class="btn btn-outline" href="{{ base }}/jobs/{{ job_id }}/email/report">Email Report</a>
                   {% endif %}
                 </td>
                 <td data-label="Email">
                   {% if email_ready %}
-                    <a class="btn btn-outline" href="/jobs/{{ job_id }}/email">Open Console</a>
+                    <a class="btn btn-outline" href="{{ base }}/jobs/{{ job_id }}/email">Open Console</a>
                   {% else %}
                     <span class="btn btn-muted">Unavailable</span>
                   {% endif %}
                 </td>
                 <td data-label="Archive">
-                  <form class="inline-form" method="post" action="/jobs/{{ job_id }}/archive">
+                  <form class="inline-form" method="post" action="{{ base }}/jobs/{{ job_id }}/archive">
                     <input type="hidden" name="archived" value="true">
                     <button class="btn btn-outline" type="submit" {% if not archivable %}disabled title="Job must finish before it can be archived."{% endif %}>Archive</button>
                   </form>
@@ -205,27 +206,27 @@
                 <td data-label="Finished">{{ finished or '—' }}</td>
                 <td data-label="Artifacts" class="actions">
                   {% if artifacts.get('csv') %}
-                    <a class="btn btn-outline" href="/jobs/{{ job_id }}/download/csv">CSV</a>
+                    <a class="btn btn-outline" href="{{ base }}/jobs/{{ job_id }}/download/csv">CSV</a>
                   {% endif %}
                   {% if artifacts.get('zip') %}
-                    <a class="btn btn-outline" href="/jobs/{{ job_id }}/download/zip">ZIP</a>
+                    <a class="btn btn-outline" href="{{ base }}/jobs/{{ job_id }}/download/zip">ZIP</a>
                   {% endif %}
                   {% if artifacts.get('pdf_batch') %}
-                    <a class="btn btn-outline" href="/jobs/{{ job_id }}/batch.pdf">Batch PDF</a>
+                    <a class="btn btn-outline" href="{{ base }}/jobs/{{ job_id }}/batch.pdf">Batch PDF</a>
                   {% endif %}
                   {% if artifacts.get('email_report') %}
-                    <a class="btn btn-outline" href="/jobs/{{ job_id }}/email/report">Email Report</a>
+                    <a class="btn btn-outline" href="{{ base }}/jobs/{{ job_id }}/email/report">Email Report</a>
                   {% endif %}
                 </td>
                 <td data-label="Email">
                   {% if email_ready %}
-                    <a class="btn btn-outline" href="/jobs/{{ job_id }}/email">Open Console</a>
+                    <a class="btn btn-outline" href="{{ base }}/jobs/{{ job_id }}/email">Open Console</a>
                   {% else %}
                     <span class="btn btn-muted">Unavailable</span>
                   {% endif %}
                 </td>
                 <td data-label="Archive">
-                  <form class="inline-form" method="post" action="/jobs/{{ job_id }}/archive">
+                  <form class="inline-form" method="post" action="{{ base }}/jobs/{{ job_id }}/archive">
                     <input type="hidden" name="archived" value="false">
                     <button class="btn btn-ghost" type="submit">Unarchive</button>
                   </form>
@@ -242,7 +243,7 @@
   </section>
 
   <footer>
-    Need the API state? <code>GET /jobs/&lt;job_id&gt;</code> returns the JSON snapshot, including the archived flag.
+    Need the API state? <code>GET {{ base }}/jobs/&lt;job_id&gt;</code> returns the JSON snapshot, including the archived flag.
   </footer>
 </body>
 </html>

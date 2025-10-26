@@ -29,6 +29,30 @@ from utils import io_utils, validation
 load_dotenv()
 
 
+def _normalize_root_path(value: Optional[str]) -> str:
+    """Normalize a configured root path into '/prefix' form or empty string."""
+    if not value:
+        return ""
+    value = value.strip()
+    if not value or value == "/":
+        return ""
+    if not value.startswith("/"):
+        value = f"/{value}"
+    return value.rstrip("/")
+
+
+APP_ROOT_PATH = _normalize_root_path(os.getenv("APP_ROOT_PATH"))
+
+
+def _with_root(path: str) -> str:
+    """Prefix path with configured root path so links respect reverse proxies."""
+    if not path.startswith("/"):
+        path = f"/{path}"
+    if not APP_ROOT_PATH:
+        return path
+    return f"{APP_ROOT_PATH}{path}"
+
+
 def _resolve_output_base() -> Path:
     candidate = os.getenv("OUTPUT_BASE") or os.getenv("APP_BASE_DIR")
     if candidate:
@@ -44,7 +68,13 @@ templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "tem
 STATUS_POLL_SECONDS = max(int(os.getenv("STATUS_POLL_SECONDS", "3")), 1)
 
 
-app = FastAPI(title="Batch Essay Evaluator", version="1.1.0")
+app = FastAPI(title="Batch Essay Evaluator", version="1.1.0", root_path=APP_ROOT_PATH)
+
+
+def _context_with_base(context: Dict[str, Any], request: Request) -> Dict[str, Any]:
+    base = (request.scope.get("root_path") or "").rstrip("/")
+    context["base_url"] = base if base else ""
+    return context
 
 
 class JobRequest(BaseModel):
@@ -198,7 +228,7 @@ async def create_job(request: JobRequest) -> Dict[str, Any]:
 @app.get("/jobs/new", response_class=HTMLResponse)
 async def new_job_form(request: Request) -> HTMLResponse:
     context = _job_form_context(request)
-    return templates.TemplateResponse("job_new.html", context)
+    return templates.TemplateResponse("job_new.html", _context_with_base(context, request))
 
 
 @app.post("/jobs/new", response_class=HTMLResponse)
@@ -247,7 +277,9 @@ async def submit_job_form(
             },
             errors=errors,
         )
-        return templates.TemplateResponse("job_new.html", context, status_code=400)
+        return templates.TemplateResponse(
+            "job_new.html", _context_with_base(context, request), status_code=400
+        )
 
     assert essays_path is not None and rubric_source is not None
 
@@ -269,7 +301,9 @@ async def submit_job_form(
             errors=errors,
             general_error=general_error,
         )
-        return templates.TemplateResponse("job_new.html", context, status_code=400)
+        return templates.TemplateResponse(
+            "job_new.html", _context_with_base(context, request), status_code=400
+        )
 
     job_id = response.get("job_id")
     if not job_id:
@@ -284,9 +318,11 @@ async def submit_job_form(
             errors=errors,
             general_error=general_error,
         )
-        return templates.TemplateResponse("job_new.html", context, status_code=500)
+        return templates.TemplateResponse(
+            "job_new.html", _context_with_base(context, request), status_code=500
+        )
 
-    return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
+    return RedirectResponse(url=_with_root(f"/jobs/{job_id}"), status_code=303)
 
 
 @app.get("/jobs", response_class=HTMLResponse)
@@ -294,14 +330,12 @@ async def jobs_page(request: Request) -> HTMLResponse:
     entries = _list_jobs(limit=80)
     active_jobs = [job for job in entries if not job.get("archived")]
     archived_jobs = [job for job in entries if job.get("archived")]
-    return templates.TemplateResponse(
-        "jobs.html",
-        {
-            "request": request,
-            "active_jobs": active_jobs,
-            "archived_jobs": archived_jobs,
-        },
-    )
+    context = {
+        "request": request,
+        "active_jobs": active_jobs,
+        "archived_jobs": archived_jobs,
+    }
+    return templates.TemplateResponse("jobs.html", _context_with_base(context, request))
 
 
 @app.get("/jobs/{job_id}", response_model=JobStatusResponse)
@@ -316,7 +350,7 @@ async def job_status(job_id: str, request: Request) -> Dict[str, Any] | HTMLResp
 
     if _wants_html(request):
         context = _job_status_context(request, job_id, snapshot)
-        return templates.TemplateResponse("job_status.html", context)
+        return templates.TemplateResponse("job_status.html", _context_with_base(context, request))
 
     return _format_status_response(snapshot)
 
@@ -330,7 +364,7 @@ async def archive_job(job_id: str, request: Request):
     if "application/json" in content_type:
         return {"job_id": job_id, "archived": snapshot.get("archived", False)}
 
-    referer = request.headers.get("referer") or "/jobs"
+    referer = request.headers.get("referer") or _with_root("/jobs")
     return RedirectResponse(url=referer, status_code=303)
 
 
@@ -457,7 +491,7 @@ async def email_console(job_id: str, request: Request) -> HTMLResponse:
         "upload_message": request.query_params.get("uploaded"),
         "upload_error": request.query_params.get("error"),
     }
-    return templates.TemplateResponse("email_console.html", context)
+    return templates.TemplateResponse("email_console.html", _context_with_base(context, request))
 
 
 @app.post("/jobs/{job_id}/email/upload_csv")
@@ -474,12 +508,14 @@ async def email_upload_csv(job_id: str, students_csv: UploadFile = File(...)) ->
         _validate_students_csv_content(decoded)
     except UnicodeDecodeError:
         return RedirectResponse(
-            url=f"/jobs/{job_id}/email?error={quote_plus('CSV must be UTF-8 encoded')}",
+            url=_with_root(
+                f"/jobs/{job_id}/email?error={quote_plus('CSV must be UTF-8 encoded')}"
+            ),
             status_code=303,
         )
     except ValueError as exc:
         return RedirectResponse(
-            url=f"/jobs/{job_id}/email?error={quote_plus(str(exc))}",
+            url=_with_root(f"/jobs/{job_id}/email?error={quote_plus(str(exc))}"),
             status_code=303,
         )
 
@@ -487,7 +523,7 @@ async def email_upload_csv(job_id: str, students_csv: UploadFile = File(...)) ->
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(decoded, encoding="utf-8")
 
-    return RedirectResponse(url=f"/jobs/{job_id}/email?uploaded=1", status_code=303)
+    return RedirectResponse(url=_with_root(f"/jobs/{job_id}/email?uploaded=1"), status_code=303)
 
 
 @app.post("/jobs/{job_id}/email/preview", response_model=EmailPreviewResponse)
@@ -593,7 +629,7 @@ async def email_send(job_id: str, request: EmailSendRequest) -> EmailSendRespons
         job_name=service.job_name,
         dry_run=False,
         report_path=str(report_path),
-        report_url=f"/jobs/{job_id}/email/report",
+        report_url=_with_root(f"/jobs/{job_id}/email/report"),
         total=len(rows),
         sent=sent_count,
         failed=failed_count,
@@ -650,11 +686,11 @@ async def rubric_fix_page(temp_id: str, request: Request) -> HTMLResponse:
         "initial_json": initial_json,
         "errors": session.error_messages,
         "warnings": session.warnings,
-        "save_url": f"/rubrics/{temp_id}/save",
-        "validate_url": f"/rubrics/{temp_id}/save?validate_only=1",
-        "download_url": f"/rubrics/{temp_id}/download",
+        "save_url": _with_root(f"/rubrics/{temp_id}/save"),
+        "validate_url": _with_root(f"/rubrics/{temp_id}/save?validate_only=1"),
+        "download_url": _with_root(f"/rubrics/{temp_id}/download"),
     }
-    return templates.TemplateResponse("rubric_fix.html", context)
+    return templates.TemplateResponse("rubric_fix.html", _context_with_base(context, request))
 
 
 @app.get("/rubrics/{temp_id}/preview", response_class=HTMLResponse)
@@ -671,7 +707,7 @@ async def rubric_preview(temp_id: str, request: Request) -> HTMLResponse:
         "rubric": rubric,
         "criteria": criteria,
     }
-    return templates.TemplateResponse("rubric_preview.html", context)
+    return templates.TemplateResponse("rubric_preview.html", _context_with_base(context, request))
 
 
 @app.get("/rubrics/{temp_id}/download")
@@ -937,11 +973,14 @@ def _job_status_context(
     progress_pct = int((processed / total) * 100) if total else 0
     artifacts = snapshot.get("artifacts") or {}
     links = {
-        "csv": "/jobs/{}/download/csv".format(job_id) if _artifact_is_ready(artifacts.get("csv")) else None,
-        "zip": "/jobs/{}/download/zip".format(job_id) if _artifact_is_ready(artifacts.get("zip")) else None,
-        "pdf_batch": "/jobs/{}/batch.pdf".format(job_id) if _artifact_is_ready(
-            artifacts.get("pdf_batch")
-        )
+        "csv": _with_root(f"/jobs/{job_id}/download/csv")
+        if _artifact_is_ready(artifacts.get("csv"))
+        else None,
+        "zip": _with_root(f"/jobs/{job_id}/download/zip")
+        if _artifact_is_ready(artifacts.get("zip"))
+        else None,
+        "pdf_batch": _with_root(f"/jobs/{job_id}/batch.pdf")
+        if _artifact_is_ready(artifacts.get("pdf_batch"))
         else None,
     }
     counts = {
@@ -972,7 +1011,7 @@ def _job_status_context(
         "error_message": snapshot.get("error"),
         "log_lines": log_lines,
         "log_available": bool(log_lines),
-        "log_download_url": f"/jobs/{job_id}/logs/job.log",
+        "log_download_url": _with_root(f"/jobs/{job_id}/logs/job.log"),
         "started_display": started_display,
         "finished_display": finished_display,
     }
@@ -1169,6 +1208,9 @@ def _format_status_response(snapshot: Dict[str, Any]) -> Dict[str, Any]:
 def _serialize_rubric_extract(result: RubricExtractResponse) -> Dict[str, Any]:
     errors = result.errors or []
     error_models = [{"loc": item.get("loc", "__root__"), "msg": item.get("msg", "")} for item in errors]
+    fix_url = _with_root(result.fix_url) if result.fix_url else None
+    save_url = _with_root(result.save_url) if result.save_url else None
+    log_path = result.log_path
     return {
         "temp_id": result.temp_id,
         "status": result.status,
@@ -1177,9 +1219,9 @@ def _serialize_rubric_extract(result: RubricExtractResponse) -> Dict[str, Any]:
         "errors": error_models,
         "error_messages": result.error_messages,
         "warnings": result.warnings,
-        "log_path": result.log_path,
-        "fix_url": result.fix_url,
-        "save_url": result.save_url,
+        "log_path": log_path,
+        "fix_url": fix_url,
+        "save_url": save_url,
         "canonical_path": result.canonical_path,
     }
 
