@@ -6,13 +6,14 @@ import csv
 import io
 import json
 import os
+import shutil
 from collections import Counter
-from pathlib import Path
+from datetime import datetime
+from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Literal, Optional
 from urllib.parse import quote_plus
 from uuid import uuid4
-
-from datetime import datetime
+from zipfile import BadZipFile, ZipFile
 
 from dotenv import load_dotenv
 from fastapi import Body, FastAPI, HTTPException, File, Form, Request, Response, UploadFile
@@ -58,6 +59,96 @@ def _resolve_output_base() -> Path:
     if candidate:
         return Path(candidate).expanduser()
     return Path("/data/sessions")
+
+
+def _resolve_essay_upload_base() -> Path:
+    base = _resolve_output_base() / "essay_uploads"
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+def _slugify_upload_name(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    cleaned = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "-" for ch in value.strip())
+    cleaned = cleaned.strip("-_")
+    return cleaned or None
+
+
+def _allocate_essay_upload_dir(desired_name: Optional[str]) -> Path:
+    base = _resolve_essay_upload_base()
+    slug = _slugify_upload_name(desired_name)
+    if slug:
+        target = base / slug
+        if target.exists():
+            raise ValueError(
+                f"Upload destination already exists: {target}. Choose a different folder name."
+            )
+        target.mkdir(parents=True, exist_ok=False)
+        return target
+
+    timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    target = base / timestamp
+    counter = 1
+    while target.exists():
+        target = base / f"{timestamp}-{counter}"
+        counter += 1
+    target.mkdir(parents=True, exist_ok=False)
+    return target
+
+
+def _safe_zip_member_path(member: str) -> Optional[Path]:
+    candidate = PurePosixPath(member)
+    parts = [part for part in candidate.parts if part not in {"", ".", ".."}]
+    if not parts:
+        return None
+    return Path(*parts)
+
+
+async def _persist_essay_archive(
+    upload_file: UploadFile, *, folder_name: Optional[str]
+) -> tuple[Path, int]:
+    filename = (upload_file.filename or "").lower()
+    if not filename.endswith(".zip"):
+        raise ValueError("Please upload a .zip file containing PDF essays.")
+
+    raw = await upload_file.read()
+    if not raw:
+        raise ValueError("Essay archive upload was empty.")
+
+    try:
+        archive = ZipFile(io.BytesIO(raw))
+    except BadZipFile as exc:
+        raise ValueError("Unable to read archive; ensure it is a valid .zip file.") from exc
+
+    target_dir = _allocate_essay_upload_dir(folder_name)
+    extracted = 0
+
+    try:
+        for info in archive.infolist():
+            if info.is_dir():
+                continue
+            if not info.filename.lower().endswith(".pdf"):
+                continue
+            relative = _safe_zip_member_path(info.filename)
+            if relative is None:
+                continue
+            destination = target_dir / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(info) as source, destination.open("wb") as dest:
+                shutil.copyfileobj(source, dest)
+            extracted += 1
+    except Exception:
+        shutil.rmtree(target_dir, ignore_errors=True)
+        raise
+    finally:
+        archive.close()
+
+    if extracted <= 0:
+        shutil.rmtree(target_dir, ignore_errors=True)
+        raise ValueError("The archive did not contain any PDF files.")
+
+    return target_dir, extracted
 
 
 job_manager = JobManager(output_base=_resolve_output_base())
@@ -323,6 +414,53 @@ async def submit_job_form(
         )
 
     return RedirectResponse(url=_with_root(f"/jobs/{job_id}"), status_code=303)
+
+
+@app.post("/jobs/upload-essays", response_class=HTMLResponse)
+async def upload_essays_archive(
+    request: Request,
+    essay_zip: UploadFile = File(...),
+    target_folder: str = Form(""),
+) -> HTMLResponse:
+    upload_feedback: Dict[str, Any]
+    values = {
+        "essays_folder": "",
+        "rubric_path": "",
+        "job_name": "",
+    }
+    status_code = 200
+
+    has_file = essay_zip is not None and (essay_zip.filename or "").strip()
+    if not has_file:
+        upload_feedback = {
+            "status": "error",
+            "message": "Select a .zip file that contains your essay PDFs.",
+        }
+        status_code = 400
+    else:
+        try:
+            folder, count = await _persist_essay_archive(
+                essay_zip, folder_name=target_folder or None
+            )
+        except ValueError as exc:
+            upload_feedback = {"status": "error", "message": str(exc)}
+            status_code = 400
+        else:
+            upload_feedback = {
+                "status": "success",
+                "message": f"Uploaded {count} PDF file(s).",
+                "path": str(folder),
+            }
+            values["essays_folder"] = str(folder)
+
+    context = _job_form_context(
+        request,
+        values=values,
+        upload_feedback=upload_feedback,
+    )
+    return templates.TemplateResponse(
+        "job_new.html", _context_with_base(context, request), status_code=status_code
+    )
 
 
 @app.get("/jobs", response_class=HTMLResponse)
@@ -851,6 +989,7 @@ def _job_form_context(
     values: Optional[Dict[str, str]] = None,
     errors: Optional[Dict[str, str]] = None,
     general_error: Optional[str] = None,
+    upload_feedback: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     defaults = {
         "essays_folder": "",
@@ -866,6 +1005,8 @@ def _job_form_context(
         "general_error": general_error,
         "recent_jobs": _list_jobs(limit=5),
         "allowed_roots": os.getenv("ALLOWED_ROOTS", ""),
+        "upload_feedback": upload_feedback,
+        "essay_upload_base": str(_resolve_essay_upload_base()),
     }
 
 

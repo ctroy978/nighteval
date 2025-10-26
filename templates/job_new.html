@@ -70,6 +70,44 @@
       flex-wrap: wrap;
       align-items: center;
     }
+    .upload-panel {
+      margin-bottom: 24px;
+      padding: 18px;
+      border-radius: 10px;
+      border: 1px dashed #cbd5e0;
+      background: #f8fafc;
+    }
+    .upload-panel h2 {
+      margin-top: 0;
+      margin-bottom: 8px;
+      font-size: 1.2rem;
+    }
+    .upload-feedback {
+      margin-top: 12px;
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 0.95rem;
+    }
+    .upload-feedback.success {
+      background: #ecfdf5;
+      border: 1px solid #34d399;
+      color: #065f46;
+    }
+    .upload-feedback.error {
+      background: #fef2f2;
+      border: 1px solid #f87171;
+      color: #991b1b;
+    }
+    .upload-path {
+      margin-top: 8px;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 0.95rem;
+      background: #1f2933;
+      color: #e2e8f0;
+      padding: 6px 8px;
+      border-radius: 6px;
+      word-break: break-all;
+    }
     button {
       background: #2563eb;
       color: #fff;
@@ -132,6 +170,30 @@
   <div class="card">
     <h1>New Evaluation Job</h1>
     <p class="subtle">Point the evaluator at a folder of essay PDFs and the rubric JSON. We will reuse the existing API & pipeline—this page is just a friendly wrapper.</p>
+    <div class="upload-panel">
+      <h2>Upload a zipped essay folder</h2>
+      <p class="hint">We'll unpack the PDFs under <code>{{ essay_upload_base }}</code>. After the upload completes, paste the folder path into the form below.</p>
+      <form method="post" action="{{ base_url }}/jobs/upload-essays" enctype="multipart/form-data">
+        <div class="field" style="margin-bottom: 12px;">
+          <label for="essay_zip">Essay ZIP file</label>
+          <input type="file" id="essay_zip" name="essay_zip" accept="application/zip,.zip" required>
+        </div>
+        <div class="field" style="margin-bottom: 12px;">
+          <label for="target_folder">Destination folder name (optional)</label>
+          <input type="text" id="target_folder" name="target_folder" placeholder="spring-section-a">
+          <p class="hint">Leave blank to assign a timestamped folder. Provide letters, numbers, dashes, or underscores for a predictable name.</p>
+        </div>
+        <button type="submit">Upload &amp; extract</button>
+      </form>
+      {% if upload_feedback %}
+        <div class="upload-feedback {{ upload_feedback.status }}">
+          {{ upload_feedback.message }}
+          {% if upload_feedback.path %}
+            <div class="upload-path">{{ upload_feedback.path }}</div>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
     {% if general_error %}
       <div class="alert">{{ general_error }}</div>
     {% endif %}
