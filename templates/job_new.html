@@ -64,6 +64,35 @@
       border: 1px solid #feb2b2;
       color: #9b2c2c;
     }
+    details.rubric-helper {
+      margin-top: 8px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #cbd5e0;
+      background: #f8fafc;
+    }
+    details.rubric-helper summary {
+      font-weight: 600;
+      cursor: pointer;
+      list-style: none;
+    }
+    details.rubric-helper summary::-webkit-details-marker {
+      display: none;
+    }
+    details.rubric-helper summary::after {
+      content: " ⓘ";
+      font-weight: 400;
+      color: #4a5568;
+    }
+    details.rubric-helper ul {
+      margin: 8px 0 0 16px;
+      padding: 0;
+      font-size: 0.9rem;
+      color: #4a5568;
+    }
+    details.rubric-helper li {
+      margin-bottom: 6px;
+    }
     .actions {
       display: flex;
       gap: 12px;
@@ -219,6 +248,15 @@
         <label for="rubric_file">Rubric JSON upload</label>
         <input type="file" id="rubric_file" name="rubric_file" accept="application/json,.json">
         <p class="hint">Upload the canonical <code>rubric.json</code> or provide a server path below.</p>
+        <details class="rubric-helper">
+          <summary>Rubric JSON reminder</summary>
+          <ul>
+            <li>Keep a top-level <code>criteria</code> array with unique <code>id</code> values.</li>
+            <li>Each criterion needs a positive <code>max_score</code> plus optional <code>name</code> and descriptors.</li>
+            <li>If you include <code>overall_points_possible</code>, match the sum of every <code>max_score</code>.</li>
+            <li>Remove unsupported keys and verify the file is valid JSON.</li>
+          </ul>
+        </details>
       </div>
       <div class="field">
         <label for="rubric_path">Rubric file path (optional alternative)</label>
